@@ -49,13 +49,14 @@ STAGE = "dev"
 WEB_DATA = os.path.join(os.path.dirname(__file__), "..", "web", "data")
 BUILDING_BREAKS = [1, 3, 7, 15, 40]  # people per building, for the legend/ramp
 
-# YlOrRd ramp (matches the choropleth) as (stop, r, g, b)
+# WorldPop background ramp: cool BLUES, deliberately distinct from the warm/red
+# damaged-building colours so the population grid doesn't read as "damage". (stop, r,g,b)
 RAMP = [
-    (0.00, 255, 255, 178),
-    (0.25, 254, 204, 92),
-    (0.50, 253, 141, 60),
-    (0.75, 240, 59, 32),
-    (1.00, 189, 0, 38),
+    (0.00, 222, 235, 247),  # #deebf7
+    (0.25, 158, 202, 225),  # #9ecae1
+    (0.50, 107, 174, 214),  # #6baed6
+    (0.75, 49, 130, 189),  # #3182bd
+    (1.00, 8, 81, 156),  # #08519c
 ]
 
 

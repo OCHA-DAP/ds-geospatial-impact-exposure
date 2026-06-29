@@ -1,9 +1,11 @@
 "use strict";
 
 const BASEMAP = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
-// per-building people ramp (matches build_validation_layers RAMP / choropleth)
+// damaged-building people ramp = warm/red (stands out on top)
 const B_COLORS = ["#ffffb2", "#fecc5c", "#fd8d3c", "#f03b20", "#bd0026"];
-const WP_COLORS = ["#ffffb2", "#fecc5c", "#fd8d3c", "#f03b20", "#bd0026"];
+// WorldPop background ramp = cool blue (must match build_validation_layers RAMP),
+// deliberately different from the building colours so it doesn't read as damage
+const WP_COLORS = ["#deebf7", "#9ecae1", "#6baed6", "#3182bd", "#08519c"];
 const fmt = new Intl.NumberFormat("en-US");
 const SRC = [["ms", "Microsoft"], ["cems", "Copernicus EMS"], ["sar", "IMPACT SAR"], ["osu", "OSU S1"]];
 
