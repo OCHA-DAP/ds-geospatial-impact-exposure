@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Validation — building footprints &amp; population grid</title>
+  <meta name="description" content="Validate the dasymetric population estimate: damaged building footprints (with per-building people) over the WorldPop 100 m grid." />
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+  <link rel="stylesheet" href="./style.css" />
+  <style>
+    main { display: block; padding: 0 24px 24px; }
+    #map { height: 78vh; min-height: 520px; border-radius: 8px; border: 1px solid var(--line); }
+    .vcontrols { display: flex; align-items: center; gap: 18px; padding: 6px 24px 12px; flex-wrap: wrap; }
+    .vcontrols label { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+    .vcontrols input[type=range] { width: 120px; }
+    .swatches { display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--muted); }
+    .swatches i { width: 22px; height: 12px; display: inline-block; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Validation — footprints &amp; the population grid</h1>
+    <p class="sub" id="sub">Zoom in to the coast to see individual building footprints over the WorldPop 100&nbsp;m grid.</p>
+    <p class="note" id="note"></p>
+    <p class="sub"><a href="./index.html">← back to the per-admin summary</a></p>
+  </header>
+
+  <div class="vcontrols">
+    <label><input type="checkbox" id="t-wp" checked /> WorldPop grid</label>
+    <label>opacity <input type="range" id="wp-op" min="0" max="100" value="70" /></label>
+    <span class="swatches" id="wp-leg"></span>
+    <span class="spacer"></span>
+    <label><input type="checkbox" id="t-bld" checked /> Damaged buildings</label>
+    <span class="swatches" id="bld-leg"></span>
+  </div>
+
+  <main><div id="map"></div></main>
+
+  <footer>
+    <p>Building colour = estimated people in that footprint (its area-weighted share of
+      the WorldPop cell it sits in). Grid colour = people per 100&nbsp;m cell (log scale).
+      Population: WorldPop 2026 constrained 100&nbsp;m. Damage: harmonized by
+      <a href="https://github.com/OCHA-DAP/ds-geospatial-impact-estimates">ds-geospatial-impact-estimates</a>.
+      Method: <a href="https://github.com/OCHA-DAP/ds-geospatial-impact-exposure/blob/main/docs/decisions/0001-dasymetric-building-population-exposure.md">ADR-0001</a>.</p>
+  </footer>
+
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/pmtiles@3.0.7/dist/pmtiles.js"></script>
+  <script src="./validate.js"></script>
+</body>
+</html>

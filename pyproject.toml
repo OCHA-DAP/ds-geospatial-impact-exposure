@@ -19,6 +19,9 @@ dependencies = [
     # Admin-boundary simplification + GeoJSON export for the static map.
     "geopandas>=1.0",
     "shapely>=2.0",
+    # Colorized WorldPop PNG overlay for the validation map.
+    "pillow>=10.0",
+    "pyproj>=3.6",
     # Blob I/O for the upstream lake + our own processed outputs (same SAS tokens
     # as ocha-stratus). open_blob_cog streams the WorldPop COG.
     "ocha-stratus>=0.1.7",

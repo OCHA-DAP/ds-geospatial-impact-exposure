@@ -113,7 +113,7 @@ def load_buildings(settings) -> pd.DataFrame:
             FROM base b
             LEFT JOIN read_parquet('{adm2}') a ON ST_Within(b.c, a.geometry)
         )
-        SELECT l.lon, l.lat, l.area_m2, l.adm1_id, l.adm2_id,
+        SELECT l.id, l.lon, l.lat, l.area_m2, l.adm1_id, l.adm2_id,
                COALESCE(f.ms_dmg, false)   AS ms_dmg,
                COALESCE(f.cems_dmg, false) AS cems_dmg,
                COALESCE(f.sar_dmg, false)  AS sar_dmg,
