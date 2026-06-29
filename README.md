@@ -38,6 +38,9 @@ uv sync
 uv run python pipelines/fetch_worldpop.py
 # 2. join damage flags + Overture base, redistribute population, aggregate, emit
 uv run python pipelines/estimate_exposure.py
+# 3. (optional) validation layers: damaged footprints -> PMTiles + WorldPop -> PNG
+#    needs tippecanoe on PATH (brew install tippecanoe)
+uv run python pipelines/build_validation_layers.py
 ```
 
 `estimate_exposure.py` writes:
@@ -47,6 +50,11 @@ uv run python pipelines/estimate_exposure.py
 | `exposure_by_admin.parquet` | blob `processed/exposure/adm0=VE/` | tidy long table (level, pcode, metric, pop_exposed, n_damaged) |
 | `exposure.json` | `web/data/` | per-admin per-source figures for the page |
 | `adm1.geojson`, `adm2.geojson` | `web/data/` | simplified admin boundaries for the map |
+
+`build_validation_layers.py` (for `web/validate.html`) writes
+`buildings.pmtiles` (~340k damaged footprints, vector tiles, per-building
+population on hover) and `worldpop.png` (the 100 m grid as a colorized overlay) —
+a zoom-in validation view: building colour vs the population grid underneath.
 
 ## Data sources
 
