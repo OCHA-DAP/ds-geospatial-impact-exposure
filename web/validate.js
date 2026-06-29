@@ -32,8 +32,9 @@ async function boot() {
   map.addControl(new maplibregl.ScaleControl({ maxWidth: 120 }), "bottom-left");
 
   map.on("load", () => {
-    // WorldPop raster overlay
-    map.addSource("wp", { type: "image", url: "./data/worldpop.png", coordinates: meta.worldpop.coordinates });
+    // WorldPop raster overlay (cache-bust by content hash so a recolor refetches)
+    const wpUrl = "./data/worldpop.png?v=" + (meta.worldpop.v || "1");
+    map.addSource("wp", { type: "image", url: wpUrl, coordinates: meta.worldpop.coordinates });
     map.addLayer({ id: "wp", type: "raster", source: "wp",
       paint: { "raster-opacity": 0.7, "raster-resampling": "nearest", "raster-fade-duration": 0 } });
 

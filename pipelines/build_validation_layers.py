@@ -24,6 +24,7 @@ Run: uv run python pipelines/build_validation_layers.py
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -170,7 +171,12 @@ def build_worldpop_png(settings, aoi) -> dict:
     llo, lhi = np.log1p(lo), np.log1p(hi)
     norm = np.clip((np.log1p(np.where(finite, vals, lo)) - llo) / (lhi - llo), 0, 1)
     rgba = _colorize(norm, finite)
-    Image.fromarray(rgba, "RGBA").save(os.path.join(WEB_DATA, "worldpop.png"))
+    png_path = os.path.join(WEB_DATA, "worldpop.png")
+    Image.fromarray(rgba, "RGBA").save(png_path)
+    # content hash -> cache-buster in the URL, so a recolor refetches even when the
+    # filename is unchanged (browsers cache map image sources past a hard reload).
+    with open(png_path, "rb") as f:
+        ver = hashlib.md5(f.read()).hexdigest()[:8]
 
     left, bottom, right, top = da.rio.bounds()
     tx = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
@@ -187,6 +193,7 @@ def build_worldpop_png(settings, aoi) -> dict:
         "coordinates": [[wlon, nlat], [elon, nlat], [elon, slat], [wlon, slat]],
         "max_per_cell": round(float(pv.max())),
         "stretch": [round(float(lo), 1), round(float(hi), 1)],
+        "v": ver,
     }
 
 
