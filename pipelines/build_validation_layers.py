@@ -31,7 +31,13 @@ import tempfile
 
 import numpy as np
 import rioxarray  # noqa: F401 - registers the .rio accessor
-from estimate_exposure import SOURCES, WORLDPOP_FILE, assign_population, load_buildings
+from estimate_exposure import (
+    SOURCES,
+    WORLDPOP_FILE,
+    assign_population,
+    load_buildings,
+    residential_subset,
+)
 from mirror import mirror_blob, mirror_prefix
 from PIL import Image
 from pyproj import Transformer
@@ -70,6 +76,7 @@ def build_pmtiles(settings) -> tuple[int, list[float]]:
     base_glob = os.path.join(base_dir, "region=*", "*.parquet")
 
     df = load_buildings(settings)
+    df = residential_subset(df)
     df = assign_population(df, wp_path)
     df["n_src"] = df[list(SOURCES.values())].sum(axis=1)
     dmg = df[df["n_src"] >= 1][["id", "pop", "n_src", "area_m2", *SOURCES.values()]].copy()
@@ -199,8 +206,9 @@ def main() -> None:
         "zoom": 12,
         "building_breaks": BUILDING_BREAKS,
         "worldpop": wp,
-        "note": "Footprints appear as you zoom in (z≥13). Building colour = estimated "
-        "people in that footprint (area-weighted share of its WorldPop cell).",
+        "note": "Footprints appear as you zoom in (z≥13). Residential buildings only; "
+        "colour = estimated residents (clamped-area share of the building's WorldPop "
+        "cell). Non-residential footprints are excluded (ADR-0002).",
     }
     with open(os.path.join(WEB_DATA, "validate.json"), "w") as f:
         json.dump(meta, f, separators=(",", ":"))

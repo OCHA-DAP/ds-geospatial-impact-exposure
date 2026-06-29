@@ -13,22 +13,26 @@ division**. Output is a small static page on GitHub Pages.
 It never writes to the viewer's lake; its own outputs land under this project's
 prefix.
 
-## Method (see [ADR-0001](docs/decisions/0001-dasymetric-building-population-exposure.md))
+## Method (see [ADR-0001](docs/decisions/0001-dasymetric-building-population-exposure.md), [ADR-0002](docs/decisions/0002-residential-only-and-clamped-area-weight.md))
 
-Area-weighted **dasymetric redistribution** at 100 m:
+Area-weighted **dasymetric redistribution** of *residential* population at 100 m:
 
 ```
-pop(building) = worldpop_cell × footprint_area / Σ(footprint_area in that cell)
+pop(building) = worldpop_cell × clamp(footprint_area) / Σ(clamp(footprint_area) in that cell)
 ```
 
-A WorldPop 100 m cell holds many buildings; we split each cell's people among
-the buildings whose centroid falls in it, weighted by footprint area (so the
-cell's population is conserved and larger structures get more people). We then
-sum over each source's *damaged* buildings, plus `any` (union of all four
-sources) and `agree2` (≥ 2 sources agree on a building — the most robust figure).
+WorldPop is a residential distribution, so we redistribute it over **residential
+buildings only** (non-residential excluded — ADR-0002) and split each 100 m
+cell's people among the homes whose centroid falls in it, weighted by **clamped**
+footprint area (floor 30 m², cap 99th percentile — keeps the apartment-block
+signal without letting a stray large footprint dominate). We then sum over each
+source's *damaged* buildings, plus `any` (union of all four sources) and `agree2`
+(≥ 2 sources agree on a building — the most robust figure).
 
-These are **detected** damaged-building populations: each source assessed only
-part of the country, so they are a floor, not a total.
+The result is an estimate of **residents of damaged buildings** — a displacement /
+shelter signal, *not* people inside at the moment of the quake (for casualties see
+USGS PAGER). And it is **detected**: each source assessed only part of the country,
+so it is a floor, not a total.
 
 ## Pipeline
 
@@ -36,9 +40,11 @@ part of the country, so they are a floor, not a total.
 uv sync
 # 1. fetch the 100 m constrained WorldPop for VE into this project's bronze
 uv run python pipelines/fetch_worldpop.py
-# 2. join damage flags + Overture base, redistribute population, aggregate, emit
+# 2. fetch Overture building attributes (subtype/class) for the residential filter
+uv run python pipelines/fetch_overture_attrs.py
+# 3. join damage flags + Overture base, residential-filter, redistribute, aggregate
 uv run python pipelines/estimate_exposure.py
-# 3. (optional) validation layers: damaged footprints -> PMTiles + WorldPop -> PNG
+# 4. (optional) validation layers: damaged footprints -> PMTiles + WorldPop -> PNG
 #    needs tippecanoe on PATH (brew install tippecanoe)
 uv run python pipelines/build_validation_layers.py
 ```
@@ -62,6 +68,7 @@ a zoom-in validation view: building colour vs the population grid underneath.
 |---|---|
 | per-building damage flags (`building_flags`) | viewer gold `model=common/adm0=VE` |
 | Overture building base (footprints) | viewer silver `source=overture/adm0=VE` |
+| Overture building attributes (subtype/class, tagged only) | Overture S3 release `2026-06-17.0` → this project's bronze |
 | admin boundaries (CODAB adm1/adm2) | viewer bronze `source=codab/adm0=VE` |
 | population (WorldPop 100 m constrained, 2026 R2025A) | WorldPop portal → this project's bronze |
 

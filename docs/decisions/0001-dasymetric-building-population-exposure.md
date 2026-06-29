@@ -1,8 +1,15 @@
 ---
-status: "accepted"
+status: "partially superseded by 0002"
 date: 2026-06-29
 deciders: tdowning
 ---
+
+> **Note:** decisions 1 (all-building base) and 4 (raw footprint-area weight) are
+> superseded by [ADR-0002](0002-residential-only-and-clamped-area-weight.md):
+> the base is now residential-only and the weight is *clamped* footprint area, and
+> the metric is framed as "residents of damaged buildings" (displacement, not
+> casualties). The dasymetric principle and 100 m WorldPop choice (decisions 2–3)
+> still stand.
 
 # Population exposure as area-weighted dasymetric people-per-damaged-building
 
