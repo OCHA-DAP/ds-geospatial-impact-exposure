@@ -5,42 +5,35 @@ const COLORS = ["#f3f3ef", "#ffffb2", "#fed976", "#feb24c", "#fd8d3c", "#f03b20"
 const BASEMAP = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 const fmt = new Intl.NumberFormat("en-US");
 
-// metric = exposure source (any/agree2/4 sources); sector = HNO need sector ("none" = plain exposure)
-const state = { metric: "any", sector: "none", level: "adm1", data: null, geo: {}, recs: {}, sel: null };
+// metric = damage-aggregation method; sector = HNO need sector ("none" = no need overlay)
+// mapShow = whether the choropleth shades total exposed or sector exposed-in-need
+const state = {
+  metric: "any", sector: "ALL", level: "adm1", mapShow: "total",
+  data: null, geo: {}, recs: {}, sel: null,
+};
 
 function colorExpr(prop) {
   const stops = [];
   for (let i = 0; i < BREAKS.length; i++) stops.push(BREAKS[i], COLORS[i + 1]);
-  return ["step", ["coalesce", ["get", prop], -1], "rgba(0,0,0,0)",
-    -0.5, COLORS[0], ...stops];
+  return ["step", ["coalesce", ["get", prop], -1], "rgba(0,0,0,0)", -0.5, COLORS[0], ...stops];
 }
 
-// prevalence = sector PiN / population (uniform assumption), capped at 1; null if no data
-function prevalence(r, sector) {
-  if (sector === "none") return 1;
-  const nd = r.need;
-  if (!nd || nd.pop == null) return null;
-  const pin = nd.pin[sector];
-  if (pin == null) return null;
-  return Math.min(1, pin / nd.pop);
-}
-// exposed (& in need for the current sector) for a given source
-function expInNeed(r, source) {
-  const exp = r.sources[source].pop;
-  if (state.sector === "none") return exp;
-  const p = prevalence(r, state.sector);
-  return p == null ? null : Math.round(exp * p);
-}
-function dispVal(r) { return expInNeed(r, state.metric); }
-function natVal(source) {
-  return state.data.adm1.reduce((s, r) => s + (expInNeed(r, source) || 0), 0);
-}
-// true PiN / population ratio (uncapped — can exceed 100% in displacement areas)
+// PiN / population (uncapped — can exceed 100% in displacement areas)
 function pinShare(r, sector) {
   if (sector === "none") return null;
   const nd = r.need;
   if (!nd || nd.pop == null || nd.pin[sector] == null) return null;
   return nd.pin[sector] / nd.pop;
+}
+function totalExp(r, source) { return r.sources[source].pop; }
+// exposed AND in need for the current sector (prevalence capped at 100%)
+function expInNeed(r, source) {
+  if (state.sector === "none") return null;
+  const s = pinShare(r, state.sector);
+  return s == null ? null : Math.round(totalExp(r, source) * Math.min(1, s));
+}
+function mapVal(r) {
+  return state.mapShow === "sector" ? expInNeed(r, state.metric) : totalExp(r, state.metric);
 }
 
 function bbox(fc) {
@@ -55,14 +48,13 @@ function bbox(fc) {
   return [[x0, y0], [x1, y1]];
 }
 
-// recompute the displayed value per feature and push to the map source
 function decorate(level) {
   const recs = state.recs[level];
   const idKey = level === "adm1" ? "adm1_id" : "adm2_id";
   state.geo[level].features.forEach((f) => {
     const r = recs[f.properties[idKey]];
     f.properties._rec = r ? JSON.stringify(r) : null;
-    const v = r ? dispVal(r) : null;
+    const v = r ? mapVal(r) : null;
     f.properties._disp = v == null ? -1 : v;
   });
 }
@@ -119,25 +111,23 @@ function onHover(e, lvl) {
   const meta = state.data.meta;
   const rows = meta.metrics.map((m) => {
     const on = m === state.metric ? ' style="font-weight:650;color:#bd0026"' : "";
-    const v = expInNeed(r, m);
-    return `<tr${on}><td class="k">${meta.labels[m]}</td><td>${v == null ? "·" : fmt.format(v)}</td></tr>`;
+    return `<tr${on}><td class="k">${meta.labels[m]}</td><td>${fmt.format(totalExp(r, m))}</td></tr>`;
   }).join("");
   let needLine = "";
   if (state.sector !== "none") {
     const pin = r.need && r.need.pin ? r.need.pin[state.sector] : null;
     const share = pinShare(r, state.sector);
+    const inNeed = expInNeed(r, state.metric);
     const lbl = sectorLabel(state.sector);
     needLine = `<div style="margin-top:5px;border-top:1px solid #eee;padding-top:4px;font-size:11px;color:#6b6b6b">` +
       (pin == null ? `${lbl}: no HNO data` :
-        `${lbl} need: ${fmt.format(pin)} PiN (${(share * 100).toFixed(0)}% of ${fmt.format(r.need.pop)})`) +
+        `${lbl}: ${fmt.format(pin)} PiN (${(share * 100).toFixed(0)}% of pop) → ` +
+        `<b style="color:#cb181d">${fmt.format(inNeed)}</b> exposed &amp; in need`) +
       `</div>`;
   }
-  const head = state.sector === "none"
-    ? `${fmt.format(r.pop_total)} people · ${fmt.format(r.n_buildings)} buildings`
-    : `exposed & in ${sectorLabel(state.sector)} need`;
   popup.setLngLat(e.lngLat).setHTML(
     `<div class="popup"><h4>${r.name}</h4>` +
-    `<div style="color:#6b6b6b;font-size:11px;margin-bottom:4px">${head}</div>` +
+    `<div style="color:#6b6b6b;font-size:11px;margin-bottom:4px">people exposed by method</div>` +
     `<table>${rows}</table>${needLine}</div>`
   ).addTo(map);
 }
@@ -150,12 +140,23 @@ function sectorLabel(code) {
 function setMetric(m) {
   state.metric = m; sortKey = null;
   document.getElementById("metric").value = m;
-  redecorate(); renderCards(); renderTable();
+  redecorate(); renderCards(); renderTable(); renderBars();
 }
 function setSector(s) {
   state.sector = s;
   document.getElementById("sector").value = s;
-  redecorate(); renderCards(); renderTable(); renderLegend();
+  // if the map is showing the (now removed) sector but sector is none, fall back
+  if (s === "none" && state.mapShow === "sector") setMapShow("total");
+  else redecorate();
+  renderCards(); renderTable(); renderBars(); renderLegend();
+  document.querySelector('#mapshow button[data-show="sector"]').textContent =
+    s === "none" ? "In need" : `In ${sectorLabel(s)} need`;
+}
+function setMapShow(mode) {
+  state.mapShow = mode;
+  document.querySelectorAll("#mapshow button").forEach((b) =>
+    b.classList.toggle("on", b.dataset.show === mode));
+  redecorate(); renderLegend();
 }
 function setLevel(lvl) {
   state.level = lvl; state.sel = null;
@@ -166,7 +167,7 @@ function setLevel(lvl) {
     [l + "-fill", l + "-line", l + "-sel"].forEach((id) =>
       map.getLayer(id) && map.setLayoutProperty(id, "visibility", vis));
   });
-  renderTable();
+  renderTable(); renderBars();
 }
 
 function select(pcode) {
@@ -174,8 +175,8 @@ function select(pcode) {
   const lvl = state.level;
   const idKey = lvl === "adm1" ? "adm1_id" : "adm2_id";
   map.setFilter(lvl + "-sel", ["==", idKey, pcode || "__none__"]);
-  document.querySelectorAll("#table tbody tr").forEach((tr) =>
-    tr.classList.toggle("sel", tr.dataset.pcode === pcode));
+  document.querySelectorAll("#table tbody tr, #bars .bc-row").forEach((el) =>
+    el.classList.toggle("sel", el.dataset.pcode === pcode));
   const f = state.geo[lvl].features.find((x) => x.properties[idKey] === pcode);
   if (f) {
     const tr = document.querySelector(`#table tbody tr[data-pcode="${pcode}"]`);
@@ -187,14 +188,11 @@ function select(pcode) {
 function renderCards() {
   const nat = state.data.meta.national, labels = state.data.meta.labels;
   const order = ["agree2", "any", "microsoft", "copernicus_ems", "impact_initiatives", "osu"];
-  const sub = (m) => state.sector === "none"
-    ? `${fmt.format(nat[m].n)} buildings`
-    : `in ${sectorLabel(state.sector)} need`;
   document.getElementById("cards").innerHTML = order.map((m) =>
     `<div class="card ${m === state.metric ? "hi" : ""}" data-m="${m}">
        <div class="lbl">${labels[m]}</div>
-       <div class="val">${fmt.format(natVal(m))}</div>
-       <div class="sub2">${sub(m)}</div>
+       <div class="val">${fmt.format(nat[m].pop)}</div>
+       <div class="sub2">${fmt.format(nat[m].n)} buildings</div>
      </div>`).join("");
   document.querySelectorAll(".card").forEach((c) => (c.onclick = () => setMetric(c.dataset.m)));
 }
@@ -202,39 +200,36 @@ function renderCards() {
 let sortKey = null, sortDir = -1;
 function renderTable() {
   const recs = state.data[state.level];
-  const metrics = state.data.meta.metrics, labels = state.data.meta.labels;
+  const labels = state.data.meta.labels;
   const showNeed = state.sector !== "none";
-  const key = sortKey || state.metric;
+  // table compares total exposed across methods (minus ≥2), always total
+  const cols = state.data.meta.metrics.filter((m) => m !== "agree2");
+  const key = sortKey || (cols.includes(state.metric) ? state.metric : "any");
   const val = (r) =>
     key === "pin" ? (r.need && r.need.pin ? (r.need.pin[state.sector] ?? -1) : -1)
       : key === "prev" ? (pinShare(r, state.sector) ?? -1)
-        : (expInNeed(r, key) ?? -1);
+        : totalExp(r, key);
   const sorted = [...recs].sort((a, b) =>
     key === "name" ? sortDir * a.name.localeCompare(b.name) : sortDir * (val(b) - val(a)));
 
-  // the union ("any") column gets a descriptive header; the rest stay short
-  const colHead = (m) => m === "any"
-    ? (state.sector === "none" ? "People exposed" : `${sectorLabel(state.sector)} PiN exposed`)
-    : shortLabel(m);
-
+  const colHead = (m) => (m === "any" ? "People exposed" : shortLabel(m));
   const thead = document.querySelector("#table thead");
   thead.innerHTML = "<tr>" +
     `<th data-k="name" class="${key === "name" ? "sorted" : ""}">${state.level === "adm1" ? "State" : "Municipality"}</th>` +
-    metrics.map((m) =>
-      `<th data-k="${m}" class="${m === state.metric ? "metric-on" : ""} ${key === m ? "sorted" : ""}" title="${labels[m]}">${colHead(m)}</th>`).join("") +
+    cols.map((m) =>
+      `<th data-k="${m}" class="${m === state.metric ? "metric-on" : ""} ${key === m ? "sorted" : ""}" title="${labels[m]} — total people exposed">${colHead(m)}</th>`).join("") +
     (showNeed
       ? `<th data-k="pin" class="${key === "pin" ? "sorted" : ""}" title="${sectorLabel(state.sector)} total People in Need (HNO 2025)">Total PiN</th>` +
         `<th data-k="prev" class="${key === "prev" ? "sorted" : ""}" title="sector PiN as a share of the admin's total population">PiN as % of total pop.</th>`
       : "") +
     "</tr>";
 
-  const cell = (r, m) => { const v = expInNeed(r, m); return v ? fmt.format(v) : "·"; };
   const tbody = document.querySelector("#table tbody");
   tbody.innerHTML = sorted.map((r) => {
     const share = pinShare(r, state.sector);
     return `<tr data-pcode="${r.pcode}" class="${r.pcode === state.sel ? "sel" : ""}">` +
       `<td title="${r.name}">${r.name}</td>` +
-      metrics.map((m) => `<td class="${m === state.metric ? "metric-on" : ""}">${cell(r, m)}</td>`).join("") +
+      cols.map((m) => `<td class="${m === state.metric ? "metric-on" : ""}">${totalExp(r, m) ? fmt.format(totalExp(r, m)) : "·"}</td>`).join("") +
       (showNeed
         ? `<td>${r.need && r.need.pin && r.need.pin[state.sector] != null ? fmt.format(r.need.pin[state.sector]) : "·"}</td>` +
           `<td>${share == null ? "·" : (share * 100).toFixed(0) + "%"}</td>`
@@ -257,12 +252,35 @@ const SHORT = {
 };
 function shortLabel(m) { return SHORT[m] || m; }
 
+function renderBars() {
+  const recs = state.data[state.level], m = state.metric;
+  const hasSector = state.sector !== "none";
+  const rows = recs.map((r) => ({ r, total: totalExp(r, m), sec: hasSector ? (expInNeed(r, m) || 0) : 0 }))
+    .sort((a, b) => b.total - a.total);
+  const max = Math.max(1, ...rows.map((x) => x.total));
+  document.getElementById("bc-title").textContent =
+    `${state.data.meta.labels[m]} — people exposed per ${state.level === "adm1" ? "state" : "municipality"}` +
+    (hasSector ? ` (dark = also in ${sectorLabel(state.sector)} need)` : "");
+  document.getElementById("bars").innerHTML = rows.map((x) => {
+    const tw = ((x.total / max) * 100).toFixed(2);
+    const sw = x.total > 0 ? ((x.sec / x.total) * 100).toFixed(2) : 0;
+    const secNum = hasSector ? ` · <b>${fmt.format(Math.round(x.sec))}</b>` : "";
+    return `<div class="bc-row ${x.r.pcode === state.sel ? "sel" : ""}" data-pcode="${x.r.pcode}">` +
+      `<span class="bc-name" title="${x.r.name}">${x.r.name}</span>` +
+      `<span class="bc-track"><span class="bc-total" style="width:${tw}%"><span class="bc-sec" style="width:${sw}%"></span></span></span>` +
+      `<span class="bc-num">${fmt.format(x.total)}${secNum}</span>` +
+      `</div>`;
+  }).join("");
+  document.querySelectorAll("#bars .bc-row").forEach((el) => (el.onclick = () => select(el.dataset.pcode)));
+}
+
 function renderLegend() {
   const swatch = (c, lbl) => `<i style="background:${c}"></i>${lbl ? `<span>${lbl}</span>` : ""}`;
   const parts = [swatch(COLORS[0], "0")];
   BREAKS.forEach((b, i) => parts.push(swatch(COLORS[i + 1], fmt.format(b))));
-  document.getElementById("legend").innerHTML =
-    `<span style="margin-right:4px">people${state.sector === "none" ? " exposed" : " exposed &amp; in need"}</span>` + parts.join("");
+  const what = state.mapShow === "sector" && state.sector !== "none"
+    ? `exposed &amp; in ${sectorLabel(state.sector)} need` : "people exposed";
+  document.getElementById("legend").innerHTML = `<span style="margin-right:4px">${what}</span>` + parts.join("");
 }
 
 async function boot() {
@@ -289,14 +307,16 @@ async function boot() {
   sel.onchange = () => setMetric(sel.value);
 
   const sectorSel = document.getElementById("sector");
-  sectorSel.innerHTML = `<option value="none">— exposure only —</option>` +
-    data.meta.sectors.map((s) => `<option value="${s.code}">${s.label}</option>`).join("");
+  sectorSel.innerHTML = data.meta.sectors.map((s) => `<option value="${s.code}">${s.label}</option>`).join("") +
+    `<option value="none">— none —</option>`;
   sectorSel.value = state.sector;
   sectorSel.onchange = () => setSector(sectorSel.value);
 
   document.querySelectorAll("#level button").forEach((b) => (b.onclick = () => setLevel(b.dataset.level)));
+  document.querySelectorAll("#mapshow button").forEach((b) => (b.onclick = () => setMapShow(b.dataset.show)));
+  document.querySelector('#mapshow button[data-show="sector"]').textContent = `In ${sectorLabel(state.sector)} need`;
 
-  renderCards(); renderTable(); renderLegend();
+  renderCards(); renderTable(); renderLegend(); renderBars();
   initMap();
 }
 

@@ -19,7 +19,7 @@
   <section class="cards" id="cards" aria-label="National totals"></section>
 
   <div class="controls">
-    <label>Source
+    <label>Damage agg. method
       <select id="metric"></select>
     </label>
     <label>Admin level
@@ -30,6 +30,12 @@
     </label>
     <label>Need sector
       <select id="sector"></select>
+    </label>
+    <label>Map shows
+      <span class="toggle" id="mapshow">
+        <button data-show="total" class="on">Total exposed</button>
+        <button data-show="sector">In need</button>
+      </span>
     </label>
     <span class="spacer"></span>
     <span class="legend" id="legend"></span>
@@ -44,6 +50,11 @@
       </table>
     </div>
   </main>
+
+  <section class="bc" id="barchart" aria-label="People exposed per admin">
+    <div class="bc-head"><strong id="bc-title"></strong></div>
+    <div id="bars"></div>
+  </section>
 
   <footer>
     <p>Population: <span id="popsrc"></span>. Damage sources harmonized by

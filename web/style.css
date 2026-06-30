@@ -66,5 +66,20 @@ th.metric-on { color: var(--accent); }
 .popup td { padding: 1px 4px; }
 .popup .k { color: var(--muted); text-align: left; }
 
+/* per-admin exposure bar chart (light = total exposed, dark = in-need subset) */
+.bc { padding: 4px 24px 16px; }
+.bc-head { font-size: 13px; margin: 8px 0 8px; }
+#bars { display: flex; flex-direction: column; gap: 2px; max-height: 340px; overflow-y: auto; }
+.bc-row { display: grid; grid-template-columns: 150px 1fr 150px; align-items: center; gap: 8px;
+  font-size: 12px; cursor: pointer; padding: 1px 2px; border-radius: 3px; }
+.bc-row:hover { background: #fff6f6; }
+.bc-row.sel { background: #ffe9e9; }
+.bc-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bc-track { background: #f0f0f0; border-radius: 3px; height: 15px; overflow: hidden; }
+.bc-total { display: block; height: 100%; background: #fdc6a8; border-radius: 3px; position: relative; min-width: 1px; }
+.bc-sec { position: absolute; left: 0; top: 0; height: 100%; background: #cb181d; border-radius: 3px; }
+.bc-num { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+.bc-num b { color: var(--accent); }
+
 footer { padding: 4px 24px 28px; font-size: 11.5px; color: var(--muted); }
 footer a { color: var(--muted); }
