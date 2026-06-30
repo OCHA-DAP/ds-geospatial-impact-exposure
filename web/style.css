@@ -78,8 +78,11 @@ th.metric-on { color: var(--accent); }
 #bars { flex: 1 1 auto; display: flex; align-items: flex-end; gap: 3px; overflow-x: auto; overflow-y: hidden; padding: 0 2px; }
 .vbar { display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
   height: 100%; min-width: 15px; cursor: pointer; }
-.vbar-val { font-size: 8.5px; color: #999; line-height: 1; margin-bottom: 2px; white-space: nowrap; flex: 0 0 auto; }
-.vbar.sel .vbar-val { color: var(--accent); font-weight: 650; }
+.vbar-val { display: flex; flex-direction: column; align-items: center; line-height: 1.1;
+  margin-bottom: 2px; white-space: nowrap; flex: 0 0 auto; }
+.vbar-val .vv-total { font-size: 8.5px; color: #999; }
+.vbar-val .vv-sec { font-size: 8.5px; color: #cb181d; font-weight: 600; }
+.vbar.sel .vbar-val .vv-total { color: var(--accent); font-weight: 650; }
 .vbar-col { width: 13px; background: #fdc6a8; border-radius: 2px 2px 0 0; min-height: 1px;
   display: flex; align-items: flex-end; flex: 0 0 auto; }
 .vbar.sel .vbar-col { outline: 1px solid #cb181d; }
