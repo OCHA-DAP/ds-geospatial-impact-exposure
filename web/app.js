@@ -306,9 +306,10 @@ function renderBars() {
     const secLabel = hasSector && x.sec > 0
       ? `<div class="vbar-seclabel" style="bottom:${secPct.toFixed(2)}%">${fmtK.format(Math.round(x.sec))}</div>` : "";
     return `<div class="vbar ${x.r.pcode === state.sel ? "sel" : ""}" data-pcode="${x.r.pcode}" title="${t}">` +
-      `<div class="vbar-val"><span class="vv-total">${fmtK.format(x.total)}</span></div>` +
+      `<div class="vbar-top"></div>` +
       `<div class="vbar-plot"><div class="vbar-col" style="height:${pct}%">` +
-      `<div class="vbar-sec" style="height:${secPct.toFixed(2)}%"></div>${secLabel}</div></div>` +
+      `<div class="vbar-sec" style="height:${secPct.toFixed(2)}%"></div>` +
+      `<div class="vbar-totlabel">${fmtK.format(x.total)}</div>${secLabel}</div></div>` +
       `<div class="vbar-name">${x.r.name}</div></div>`;
   }).join("");
   document.querySelectorAll("#bars .vbar").forEach((el) => (el.onclick = () => select(el.dataset.pcode)));

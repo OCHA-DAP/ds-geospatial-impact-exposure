@@ -75,16 +75,17 @@ th.metric-on { color: var(--accent); }
   padding: 8px 10px 6px; overflow: hidden; }
 .bc-head { font-size: 12px; margin: 0 2px 4px; color: var(--ink); flex: 0 0 auto; }
 /* bars share a baseline because the name row is a FIXED height under each column */
-#bars { flex: 1 1 auto; display: flex; align-items: flex-end; gap: 3px; overflow-x: auto; overflow-y: hidden; padding: 0 2px; }
-.vbar { display: flex; flex-direction: column; align-items: center; height: 100%; min-width: 15px; cursor: pointer; }
-.vbar-val { flex: 0 0 auto; height: 15px; display: flex; align-items: flex-end; }
-.vbar-val .vv-total { font-size: 8.5px; color: #999; line-height: 1; white-space: nowrap; }
-.vbar.sel .vbar-val .vv-total { color: var(--accent); font-weight: 650; }
-.vbar-plot { flex: 1 1 auto; min-height: 0; width: 13px; display: flex; align-items: flex-end; }
-.vbar-col { width: 13px; background: #fdc6a8; border-radius: 2px 2px 0 0; min-height: 1px; position: relative; }
+#bars { flex: 1 1 auto; display: flex; align-items: flex-end; gap: 5px; overflow-x: auto; overflow-y: hidden; padding: 0 2px; }
+.vbar { display: flex; flex-direction: column; align-items: center; height: 100%; min-width: 22px; cursor: pointer; }
+.vbar-top { flex: 0 0 14px; }  /* headroom so the tallest bar's total label isn't clipped */
+.vbar-plot { flex: 1 1 auto; min-height: 0; width: 18px; display: flex; align-items: flex-end; }
+.vbar-col { width: 18px; background: #fdc6a8; border-radius: 2px 2px 0 0; min-height: 1px; position: relative; }
 .vbar.sel .vbar-col { outline: 1px solid #cb181d; }
 .vbar-sec { position: absolute; left: 0; bottom: 0; width: 100%; background: #cb181d; border-radius: 2px 2px 0 0; }
-/* sector count floats at the top edge of the dark sector bar */
+/* total floats just above the top of the light bar; sector at the top of the dark bar */
+.vbar-totlabel { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 1px;
+  font-size: 8.5px; color: #999; line-height: 1; white-space: nowrap; pointer-events: none; }
+.vbar.sel .vbar-totlabel { color: var(--accent); font-weight: 650; }
 .vbar-seclabel { position: absolute; left: 50%; transform: translate(-50%, -100%); font-size: 8px;
   color: #cb181d; font-weight: 600; line-height: 1; white-space: nowrap; pointer-events: none; }
 .vbar-name { flex: 0 0 auto; height: 58px; writing-mode: vertical-rl; font-size: 9px; color: #888;
