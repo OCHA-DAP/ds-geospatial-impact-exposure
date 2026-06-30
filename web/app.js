@@ -284,7 +284,6 @@ const SHORT = {
 };
 function shortLabel(m) { return SHORT[m] || m; }
 
-const BAR_NAME_H = 58; // px reserved for the (fixed-height) name row under each column
 const fmtK = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
 function renderBars() {
   const recs = state.data[state.level], m = state.metric;
@@ -297,19 +296,19 @@ function renderBars() {
     `<span class="sw" style="background:${BAR_LIGHT}"></span>${state.data.meta.labels[m]}: ${fmt.format(nat)} exposed` +
     (hasSector ? ` · <span class="sw" style="background:${BAR_DARK}"></span>in ${sectorLabel(state.sector)} need` : "") +
     ` · per ${state.level === "adm1" ? "state" : "municipality"}`;
-  const barsEl = document.getElementById("bars");
-  const valH = hasSector ? 30 : 16; // headroom for one or two value lines
-  const plotPx = Math.max(30, (barsEl.clientHeight || 360) - BAR_NAME_H - valH);
-  barsEl.innerHTML = rows.map((x) => {
-    const h = Math.max(1, (x.total / max) * plotPx);
-    const sh = x.total > 0 ? ((x.sec / x.total) * 100).toFixed(2) : 0;
+  // bar height = % of the (flex) plot area, so the tallest bar fills it exactly —
+  // labels sit in their own fixed rows above/below, nothing gets clipped.
+  document.getElementById("bars").innerHTML = rows.map((x) => {
+    const pct = ((x.total / max) * 100).toFixed(2);
+    const secPct = x.total > 0 ? (x.sec / x.total) * 100 : 0;
     const t = `${x.r.name}: ${fmt.format(x.total)} exposed` +
       (hasSector ? ` · ${fmt.format(Math.round(x.sec))} also in need` : "");
-    const valHtml = `<span class="vv-total">${fmtK.format(x.total)}</span>` +
-      (hasSector ? `<span class="vv-sec">${fmtK.format(Math.round(x.sec))}</span>` : "");
+    const secLabel = hasSector && x.sec > 0
+      ? `<div class="vbar-seclabel" style="bottom:${secPct.toFixed(2)}%">${fmtK.format(Math.round(x.sec))}</div>` : "";
     return `<div class="vbar ${x.r.pcode === state.sel ? "sel" : ""}" data-pcode="${x.r.pcode}" title="${t}">` +
-      `<div class="vbar-val">${valHtml}</div>` +
-      `<div class="vbar-col" style="height:${h.toFixed(1)}px"><div class="vbar-sec" style="height:${sh}%"></div></div>` +
+      `<div class="vbar-val"><span class="vv-total">${fmtK.format(x.total)}</span></div>` +
+      `<div class="vbar-plot"><div class="vbar-col" style="height:${pct}%">` +
+      `<div class="vbar-sec" style="height:${secPct.toFixed(2)}%"></div>${secLabel}</div></div>` +
       `<div class="vbar-name">${x.r.name}</div></div>`;
   }).join("");
   document.querySelectorAll("#bars .vbar").forEach((el) => (el.onclick = () => select(el.dataset.pcode)));
