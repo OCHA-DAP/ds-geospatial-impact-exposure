@@ -33,10 +33,10 @@ select { font-size: 13px; padding: 4px 8px; border: 1px solid var(--line); borde
 .legend i { width: 16px; height: 12px; display: inline-block; border: 1px solid rgba(0,0,0,.1); }
 
 .chk { cursor: pointer; }
-main { display: grid; grid-template-columns: 1.05fr 1fr; gap: 0; padding: 0 24px 24px;
-  align-items: stretch; }
-.mapwrap { position: relative; }
-#map { height: 640px; border: 1px solid var(--line); border-radius: 8px 0 0 8px; border-right: 0; }
+main { display: grid; grid-template-columns: 1.05fr 1fr; grid-template-areas: "map chart" "table table";
+  gap: 14px; padding: 4px 24px 24px; }
+.mapwrap { grid-area: map; position: relative; }
+#map { height: 440px; border: 1px solid var(--line); border-radius: 8px; }
 .map-ctrl { position: absolute; top: 10px; left: 10px; z-index: 2; display: flex;
   box-shadow: 0 1px 4px rgba(0,0,0,.2); border-radius: 6px; }
 .map-ctrl button { font-size: 12px; padding: 5px 10px; border: 1px solid var(--line);
@@ -44,12 +44,12 @@ main { display: grid; grid-template-columns: 1.05fr 1fr; gap: 0; padding: 0 24px
 .map-ctrl button:first-child { border-radius: 6px 0 0 6px; }
 .map-ctrl button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
 .map-ctrl button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
-#right { height: 640px; display: flex; flex-direction: column; overflow: hidden;
-  border: 1px solid var(--line); border-radius: 0 8px 8px 0; background: #fff; }
-#tablewrap { flex: 1 1 auto; overflow: auto; }
-@media (max-width: 900px) { main { grid-template-columns: 1fr; }
-  #map { border-radius: 8px; border-right: 1px solid var(--line); }
-  #right { border-radius: 8px; margin-top: 12px; height: 520px; } }
+#barchart { grid-area: chart; height: 440px; }
+.table-area { grid-area: table; }
+.table-toolbar { display: flex; justify-content: flex-end; padding: 2px 2px 6px; }
+#tablewrap { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+@media (max-width: 900px) { main { grid-template-columns: 1fr; grid-template-areas: "map" "chart" "table"; }
+  #barchart { height: 320px; } }
 
 table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 thead th { position: sticky; top: 0; background: #fff; border-bottom: 2px solid var(--line);
@@ -71,18 +71,22 @@ th.metric-on { color: var(--accent); }
 .popup .k { color: var(--muted); text-align: left; }
 
 /* per-admin exposure bar chart — VERTICAL bars (light = total, dark = in-need subset) */
-.bc { flex: 0 0 auto; padding: 8px 10px 4px; border-bottom: 1px solid var(--line); }
-.bc-head { font-size: 12px; margin: 0 4px 6px; color: var(--ink); }
-#bars { display: flex; align-items: flex-end; gap: 3px; height: 188px; overflow-x: auto; padding: 2px 2px 0; }
+.bc { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px 6px; overflow: hidden; }
+.bc-head { font-size: 12px; margin: 0 2px 4px; color: var(--ink); flex: 0 0 auto; }
+/* bars share a baseline because the name row is a FIXED height under each column */
+#bars { flex: 1 1 auto; display: flex; align-items: flex-end; gap: 3px; overflow-x: auto; overflow-y: hidden; padding: 0 2px; }
 .vbar { display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
   height: 100%; min-width: 15px; cursor: pointer; }
-.vbar.sel .vbar-name { color: var(--accent); font-weight: 650; }
+.vbar-val { font-size: 8.5px; color: #999; line-height: 1; margin-bottom: 2px; white-space: nowrap; flex: 0 0 auto; }
+.vbar.sel .vbar-val { color: var(--accent); font-weight: 650; }
 .vbar-col { width: 13px; background: #fdc6a8; border-radius: 2px 2px 0 0; min-height: 1px;
-  display: flex; align-items: flex-end; }
+  display: flex; align-items: flex-end; flex: 0 0 auto; }
 .vbar.sel .vbar-col { outline: 1px solid #cb181d; }
 .vbar-sec { width: 100%; background: #cb181d; border-radius: 2px 2px 0 0; }
 .vbar-name { writing-mode: vertical-rl; font-size: 9px; color: #888; margin-top: 4px;
-  max-height: 56px; overflow: hidden; white-space: nowrap; }
+  height: 58px; overflow: hidden; white-space: nowrap; flex: 0 0 auto; }
+.vbar.sel .vbar-name { color: var(--accent); font-weight: 650; }
 
 /* swatch chips that tie the table headers to the bar-chart colours */
 .sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }

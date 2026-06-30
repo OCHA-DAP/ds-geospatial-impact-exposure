@@ -270,7 +270,8 @@ const SHORT = {
 };
 function shortLabel(m) { return SHORT[m] || m; }
 
-const BAR_PLOT = 120; // px — tallest column
+const BAR_NAME_H = 58, BAR_VAL_H = 16; // px reserved under/over each column
+const fmtK = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
 function renderBars() {
   const recs = state.data[state.level], m = state.metric;
   const hasSector = state.sector !== "none";
@@ -282,12 +283,15 @@ function renderBars() {
     `<span class="sw" style="background:${BAR_LIGHT}"></span>${state.data.meta.labels[m]}: ${fmt.format(nat)} exposed` +
     (hasSector ? ` · <span class="sw" style="background:${BAR_DARK}"></span>in ${sectorLabel(state.sector)} need` : "") +
     ` · per ${state.level === "adm1" ? "state" : "municipality"}`;
-  document.getElementById("bars").innerHTML = rows.map((x) => {
-    const h = Math.max(1, (x.total / max) * BAR_PLOT);
+  const barsEl = document.getElementById("bars");
+  const plotPx = Math.max(30, (barsEl.clientHeight || 360) - BAR_NAME_H - BAR_VAL_H);
+  barsEl.innerHTML = rows.map((x) => {
+    const h = Math.max(1, (x.total / max) * plotPx);
     const sh = x.total > 0 ? ((x.sec / x.total) * 100).toFixed(2) : 0;
     const t = `${x.r.name}: ${fmt.format(x.total)} exposed` +
       (hasSector ? ` · ${fmt.format(Math.round(x.sec))} also in need` : "");
     return `<div class="vbar ${x.r.pcode === state.sel ? "sel" : ""}" data-pcode="${x.r.pcode}" title="${t}">` +
+      `<div class="vbar-val">${fmtK.format(x.total)}</div>` +
       `<div class="vbar-col" style="height:${h.toFixed(1)}px"><div class="vbar-sec" style="height:${sh}%"></div></div>` +
       `<div class="vbar-name">${x.r.name}</div></div>`;
   }).join("");
@@ -341,6 +345,8 @@ async function boot() {
 
   renderTable(); renderLegend(); renderBars();
   initMap();
+  let rz;
+  window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(renderBars, 150); });
 }
 
 boot();

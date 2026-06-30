@@ -29,7 +29,6 @@
     <label>Need sector
       <select id="sector"></select>
     </label>
-    <label class="chk"><input type="checkbox" id="showsrc" /> per-source columns</label>
     <span class="spacer"></span>
     <span class="legend" id="legend"></span>
   </div>
@@ -42,11 +41,14 @@
         <button data-show="sector">In need</button>
       </div>
     </div>
-    <div id="right">
-      <section class="bc" id="barchart" aria-label="People exposed per admin">
-        <div class="bc-head"><strong id="bc-title"></strong></div>
-        <div id="bars"></div>
-      </section>
+    <section class="bc" id="barchart" aria-label="People exposed per admin">
+      <div class="bc-head"><strong id="bc-title"></strong></div>
+      <div id="bars"></div>
+    </section>
+    <div class="table-area">
+      <div class="table-toolbar">
+        <label class="chk"><input type="checkbox" id="showsrc" /> show per-source columns</label>
+      </div>
       <div id="tablewrap">
         <table id="table">
           <thead></thead>
