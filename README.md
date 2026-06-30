@@ -42,7 +42,10 @@ uv sync
 uv run python pipelines/fetch_worldpop.py
 # 2. fetch Overture building attributes (subtype/class) for the residential filter
 uv run python pipelines/fetch_overture_attrs.py
-# 3. join damage flags + Overture base, residential-filter, redistribute, aggregate
+# 3. fetch the HNO 2025 People-in-Need (per municipio) for the pre-existing-need overlay
+uv run python pipelines/fetch_hno.py
+# 4. join damage flags + Overture base, residential-filter, redistribute, aggregate,
+#    overlay HNO shelter-need tiers
 uv run python pipelines/estimate_exposure.py
 # 4. (optional) validation layers: damaged footprints -> PMTiles + WorldPop -> PNG
 #    needs tippecanoe on PATH (brew install tippecanoe)
@@ -71,6 +74,7 @@ a zoom-in validation view: building colour vs the population grid underneath.
 | Overture building attributes (subtype/class, tagged only) | Overture S3 release `2026-06-17.0` → this project's bronze |
 | admin boundaries (CODAB adm1/adm2) | viewer bronze `source=codab/adm0=VE` |
 | population (WorldPop 100 m constrained, 2026 R2025A) | WorldPop portal → this project's bronze |
+| pre-existing need (HNO 2025 PiN per municipio, incl. Shelter) | HDX → this project's bronze (joined by state+municipio name) |
 
 ## Config
 

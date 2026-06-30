@@ -2,15 +2,28 @@
 
 const BREAKS = [1, 250, 1000, 5000, 20000, 50000];
 const COLORS = ["#f3f3ef", "#ffffb2", "#fed976", "#feb24c", "#fd8d3c", "#f03b20", "#bd0026"];
+// pre-existing shelter-need tiers (purple, distinct from the red exposure ramp)
+const TIER_COLORS = ["#cbc9e2", "#9e9ac8", "#756bb1", "#54278f"]; // Low..Very high
+const TIER_NODATA = "#e3e3e3";
 const BASEMAP = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 const fmt = new Intl.NumberFormat("en-US");
 
-const state = { metric: "any", level: "adm1", data: null, geo: {}, recs: {}, sel: null };
+const state = { metric: "any", level: "adm1", shade: "exposure", data: null, geo: {}, recs: {}, sel: null };
 
 function colorExpr(prop) {
   const stops = [];
   for (let i = 0; i < BREAKS.length; i++) stops.push(BREAKS[i], COLORS[i + 1]);
   return ["step", ["coalesce", ["get", prop], 0], COLORS[0], ...stops];
+}
+
+function tierColorExpr() {
+  return ["match", ["coalesce", ["get", "_tier"], -1],
+    0, TIER_COLORS[0], 1, TIER_COLORS[1], 2, TIER_COLORS[2], 3, TIER_COLORS[3], TIER_NODATA];
+}
+
+// fill expression for the current shade mode
+function fillExpr() {
+  return state.shade === "need" ? tierColorExpr() : colorExpr("m_" + state.metric);
 }
 
 function bbox(fc) {
@@ -32,6 +45,7 @@ function decorate(level) {
   state.geo[level].features.forEach((f) => {
     const r = recs[f.properties[idKey]];
     f.properties._rec = r ? JSON.stringify(r) : null;
+    f.properties._tier = r && r.pre && r.pre.tier != null ? r.pre.tier : -1;
     state.data.meta.metrics.forEach((m) => {
       f.properties["m_" + m] = r ? r.sources[m].pop : 0;
     });
@@ -50,7 +64,7 @@ function initMap() {
       map.addSource(lvl, { type: "geojson", data: state.geo[lvl] });
       map.addLayer({
         id: lvl + "-fill", type: "fill", source: lvl,
-        paint: { "fill-color": colorExpr("m_" + state.metric), "fill-opacity": 0.78 },
+        paint: { "fill-color": fillExpr(), "fill-opacity": 0.78 },
         layout: { visibility: lvl === state.level ? "visible" : "none" },
       });
       map.addLayer({
@@ -89,21 +103,38 @@ function onHover(e, lvl) {
     const on = m === state.metric ? ' style="font-weight:650;color:#bd0026"' : "";
     return `<tr${on}><td class="k">${state.data.meta.labels[m]}</td><td>${fmt.format(r.sources[m].pop)}</td></tr>`;
   }).join("");
+  const pre = r.pre || {};
+  const sh = state.data.meta.shelter;
+  const preLine = pre.pin != null
+    ? `<div style="margin-top:5px;border-top:1px solid #eee;padding-top:4px;font-size:11px;color:#6b6b6b">` +
+      `pre-existing PiN ${fmt.format(pre.pin)} · shelter need: ` +
+      `<b style="color:${pre.tier != null ? TIER_COLORS[pre.tier] : "#999"}">${pre.tier != null ? sh.labels[pre.tier] : "n/a"}</b></div>`
+    : "";
   popup.setLngLat(e.lngLat).setHTML(
     `<div class="popup"><h4>${r.name}</h4>` +
     `<div style="color:#6b6b6b;font-size:11px;margin-bottom:4px">${fmt.format(r.pop_total)} people · ${fmt.format(r.n_buildings)} buildings</div>` +
-    `<table>${rows}</table></div>`
+    `<table>${rows}</table>${preLine}</div>`
   ).addTo(map);
+}
+
+function repaint() {
+  ["adm1", "adm2"].forEach((lvl) =>
+    map.getLayer(lvl + "-fill") && map.setPaintProperty(lvl + "-fill", "fill-color", fillExpr()));
 }
 
 function setMetric(m) {
   state.metric = m;
   sortKey = null; // table follows the selected source unless the user re-sorts
-
-  ["adm1", "adm2"].forEach((lvl) =>
-    map.getLayer(lvl + "-fill") && map.setPaintProperty(lvl + "-fill", "fill-color", colorExpr("m_" + m)));
+  repaint();
   document.getElementById("metric").value = m;
-  renderCards(); renderTable(); renderLegend();
+  renderCards(); renderTable(); renderLegend(); renderSeverity();
+}
+
+function setShade(mode) {
+  state.shade = mode;
+  document.querySelectorAll("#shade button").forEach((b) =>
+    b.classList.toggle("on", b.dataset.shade === mode));
+  repaint(); renderLegend();
 }
 
 function setLevel(lvl) {
@@ -115,7 +146,7 @@ function setLevel(lvl) {
     [l + "-fill", l + "-line", l + "-sel"].forEach((id) =>
       map.getLayer(id) && map.setLayoutProperty(id, "visibility", vis));
   });
-  renderTable();
+  renderTable(); renderSeverity();
 }
 
 function select(pcode) {
@@ -146,20 +177,30 @@ function renderCards() {
     c.onclick = () => setMetric(c.dataset.m));
 }
 
+function tierChip(t, labels) {
+  if (t == null) return '<span class="chip t-1">n/a</span>';
+  return `<span class="chip" style="background:${TIER_COLORS[t]}">${labels[t]}</span>`;
+}
+
 let sortKey = null, sortDir = -1;
 function renderTable() {
   const recs = state.data[state.level];
   const metrics = state.data.meta.metrics, labels = state.data.meta.labels;
+  const shl = state.data.meta.shelter.labels;
   const key = sortKey || state.metric;
+  const val = (r) =>
+    key === "pin" ? (r.pre.pin ?? -1)
+      : key === "tier" ? (r.pre.tier ?? -1)
+        : (r.sources[key]?.pop ?? 0);
   const sorted = [...recs].sort((a, b) =>
-    key === "name"
-      ? sortDir * a.name.localeCompare(b.name)
-      : sortDir * ((b.sources[key]?.pop ?? 0) - (a.sources[key]?.pop ?? 0)));
+    key === "name" ? sortDir * a.name.localeCompare(b.name) : sortDir * (val(b) - val(a)));
   const thead = document.querySelector("#table thead");
   thead.innerHTML = "<tr>" +
     `<th data-k="name" class="${key === "name" ? "sorted" : ""}">${state.level === "adm1" ? "State" : "Municipality"}</th>` +
     metrics.map((m) =>
       `<th data-k="${m}" class="${m === state.metric ? "metric-on" : ""} ${key === m ? "sorted" : ""}" title="${labels[m]}">${shortLabel(m)}</th>`).join("") +
+    `<th data-k="pin" class="${key === "pin" ? "sorted" : ""}" title="Pre-existing People in Need (HNO 2025)">Pre-PiN</th>` +
+    `<th data-k="tier" class="${key === "tier" ? "sorted" : ""}" title="Pre-existing shelter need tier">Shelter need</th>` +
     "</tr>";
   const tbody = document.querySelector("#table tbody");
   tbody.innerHTML = sorted.map((r) =>
@@ -167,6 +208,8 @@ function renderTable() {
        <td title="${r.name}">${r.name}</td>` +
     metrics.map((m) =>
       `<td class="${m === state.metric ? "metric-on" : ""}">${r.sources[m].pop ? fmt.format(r.sources[m].pop) : "·"}</td>`).join("") +
+    `<td>${r.pre.pin != null ? fmt.format(r.pre.pin) : "·"}</td>` +
+    `<td style="text-align:left">${tierChip(r.pre.tier, shl)}</td>` +
     "</tr>").join("");
   thead.querySelectorAll("th").forEach((th) => th.onclick = () => {
     const k = th.dataset.k;
@@ -186,10 +229,44 @@ function shortLabel(m) { return SHORT[m] || m; }
 
 function renderLegend() {
   const swatch = (c, lbl) => `<i style="background:${c}"></i>${lbl ? `<span>${lbl}</span>` : ""}`;
+  if (state.shade === "need") {
+    const labels = state.data.meta.shelter.labels;
+    const parts = TIER_COLORS.map((c, i) => swatch(c, labels[i]));
+    parts.push(swatch(TIER_NODATA, "no data"));
+    document.getElementById("legend").innerHTML =
+      `<span style="margin-right:4px">shelter need</span>` + parts.join("");
+    return;
+  }
   const parts = [swatch(COLORS[0], "0")];
   BREAKS.forEach((b, i) => parts.push(swatch(COLORS[i + 1], fmt.format(b))));
   document.getElementById("legend").innerHTML =
     `<span style="margin-right:4px">people exposed</span>` + parts.join("");
+}
+
+function renderSeverity() {
+  const recs = state.data[state.level];
+  const sh = state.data.meta.shelter, m = state.metric, mlabel = state.data.meta.labels[m];
+  const sums = {}, counts = {};
+  recs.forEach((r) => {
+    const t = r.pre && r.pre.tier != null ? r.pre.tier : -1;
+    sums[t] = (sums[t] || 0) + (r.sources[m].pop || 0);
+    counts[t] = (counts[t] || 0) + 1;
+  });
+  const order = [0, 1, 2, 3];
+  if (counts[-1]) order.push(-1);
+  const max = Math.max(1, ...order.map((t) => sums[t] || 0));
+  const color = (t) => (t === -1 ? TIER_NODATA : TIER_COLORS[t]);
+  const label = (t) => (t === -1 ? "No HNO data" : sh.labels[t]);
+  document.getElementById("sev-title").textContent =
+    `${mlabel} by pre-existing shelter need — ${state.level === "adm2" ? "municipios" : "states"}`;
+  document.getElementById("sev-note").textContent = sh.note;
+  document.getElementById("sev-bars").innerHTML = order.map((t) => {
+    const v = sums[t] || 0, w = ((v / max) * 100).toFixed(1);
+    return `<div class="sev-row"><span class="lab"><i style="background:${color(t)}"></i>${label(t)} ` +
+      `<span style="color:#aaa">(${counts[t] || 0})</span></span>` +
+      `<span class="sev-track"><span class="sev-fill" style="width:${w}%;background:${color(t)}"></span></span>` +
+      `<span class="num">${fmt.format(Math.round(v))}</span></div>`;
+  }).join("");
 }
 
 async function boot() {
@@ -217,8 +294,10 @@ async function boot() {
   sel.onchange = () => setMetric(sel.value);
   document.querySelectorAll("#level button").forEach((b) =>
     b.onclick = () => setLevel(b.dataset.level));
+  document.querySelectorAll("#shade button").forEach((b) =>
+    b.onclick = () => setShade(b.dataset.shade));
 
-  renderCards(); renderTable(); renderLegend();
+  renderCards(); renderTable(); renderLegend(); renderSeverity();
   initMap();
 }
 

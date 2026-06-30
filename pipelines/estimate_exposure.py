@@ -51,6 +51,7 @@ import numpy as np
 import pandas as pd
 import rasterio
 from azure.storage.blob import ContainerClient
+from fetch_hno import norm
 from mirror import mirror_blob, mirror_prefix
 
 from giex.config import load_settings
@@ -143,6 +144,59 @@ NONRES_CLASS = {
 # size signal but stops a stray large untagged footprint from dominating a cell.
 AREA_FLOOR_M2 = 30.0
 AREA_CAP_PCTL = 99  # cap = this percentile of residential footprint area
+
+# Pre-existing humanitarian need overlay (HNO 2025, see fetch_hno.py / ADR-0003).
+# The official JIAF severity *phase* isn't open and intersectoral PiN-per-capita
+# is nearly flat, so we tier admin units by *Shelter*-cluster PiN per capita —
+# the need most relevant to building damage — into 4 levels.
+HNO_YEAR = 2025
+SHELTER_BREAKS = [0.05, 0.10, 0.15]  # ratio cut-points -> tiers 0..3
+SHELTER_TIER_LABELS = ["Low", "Moderate", "High", "Very high"]
+
+
+def shelter_tier(ratio: float | None) -> int | None:
+    """Map a Shelter-PiN/population ratio to a tier index 0..3 (None if no data)."""
+    if ratio is None or (isinstance(ratio, float) and ratio != ratio):  # NaN-safe
+        return None
+    return sum(ratio >= b for b in SHELTER_BREAKS)
+
+
+def load_hno(settings) -> dict:
+    """Mirror the HNO 2025 bronze parquet; return {state_norm|mun_norm: {...}}."""
+    p = mirror_blob(
+        settings.blob_path("bronze", "hno", f"adm0={ADM0}", f"hno_{HNO_YEAR}_adm2.parquet"),
+        settings.container,
+        STAGE,
+    )
+    h = pd.read_parquet(p)
+    h["key"] = h["state"].map(norm) + "|" + h["municipio"].map(norm)
+    return h.set_index("key")[["population", "pin_intersectoral", "pin_shelter"]].to_dict("index")
+
+
+def _num(v) -> float | None:
+    """Coerce a possibly-NaN/None HNO cell to a float, or None if missing."""
+    if v is None or (isinstance(v, float) and v != v):
+        return None
+    return float(v)
+
+
+def _pre_record(rec: dict | None) -> dict:
+    """Build a per-admin pre-existing-need block from an HNO lookup row.
+
+    Missing Shelter PiN (some municipios) -> tier None ("no data"), distinct from
+    a reported zero. Intersectoral PiN / population are still carried when present."""
+    pop = _num(rec.get("population")) if rec else None
+    if not pop:
+        return {"pop": None, "pin": None, "shelter": None, "ratio": None, "tier": None}
+    shelter = _num(rec.get("pin_shelter"))
+    ratio = shelter / pop if shelter is not None else None
+    return {
+        "pop": round(pop),
+        "pin": round(_num(rec.get("pin_intersectoral")) or 0.0),
+        "shelter": round(shelter) if shelter is not None else None,
+        "ratio": round(ratio, 3) if ratio is not None else None,
+        "tier": shelter_tier(ratio),
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -344,7 +398,7 @@ def upload_parquet(frame: pd.DataFrame, blob: str, settings) -> None:
     cc.upload_blob(name=blob, data=data, overwrite=True, length=len(data), max_concurrency=8)
 
 
-def build_web_json(tables, g1, g2) -> dict:
+def build_web_json(tables, g1, g2, hno) -> dict:
     name1 = g1.set_index("adm1_id")["adm1_name"].to_dict()
     name2 = g2.set_index("adm2_id")["adm2_name"].to_dict()
     parent = g2.set_index("adm2_id")["adm1_id"].to_dict()
@@ -374,6 +428,48 @@ def build_web_json(tables, g1, g2) -> dict:
 
     adm1 = pack("adm1", name1)
     adm2 = pack("adm2", name2, parent)
+
+    # --- pre-existing humanitarian need (HNO 2025): attach per adm2 by state|mun
+    #     name, aggregate to adm1, and tier by Shelter-PiN per capita (ADR-0003).
+    for r in adm2:
+        st = name1.get(r.get("adm1_id"), "")
+        r["pre"] = _pre_record(hno.get(f"{norm(st)}|{norm(r['name'])}"))
+    agg: dict = {}
+    for r in adm2:
+        pre = r["pre"]
+        if pre["pop"] is None:
+            continue
+        a = agg.setdefault(r["adm1_id"], {"pop": 0.0, "pin": 0.0, "sh": 0.0, "sh_pop": 0.0})
+        a["pop"] += pre["pop"]
+        a["pin"] += pre["pin"]
+        if pre["shelter"] is not None:  # ratio only over children with shelter data
+            a["sh"] += pre["shelter"]
+            a["sh_pop"] += pre["pop"]
+    for r in adm1:
+        a = agg.get(r["pcode"])
+        if a and a["pop"] > 0:
+            ratio = a["sh"] / a["sh_pop"] if a["sh_pop"] > 0 else None
+            r["pre"] = {
+                "pop": round(a["pop"]),
+                "pin": round(a["pin"]),
+                "shelter": round(a["sh"]) if a["sh_pop"] > 0 else None,
+                "ratio": round(ratio, 3) if ratio is not None else None,
+                "tier": shelter_tier(ratio),
+            }
+        else:
+            r["pre"] = {"pop": None, "pin": None, "shelter": None, "ratio": None, "tier": None}
+
+    def breakdown(records):
+        out: dict = {}
+        for r in records:
+            t = r["pre"]["tier"]
+            k = t if t is not None else -1
+            b = out.setdefault(k, {"tier": k, "n_adm": 0, "any": 0, "agree2": 0})
+            b["n_adm"] += 1
+            b["any"] += r["sources"]["any"]["pop"]
+            b["agree2"] += r["sources"]["agree2"]["pop"]
+        return [out[k] for k in sorted(out)]
+
     national = {
         m: {
             "pop": sum(r["sources"][m]["pop"] for r in adm1),
@@ -395,6 +491,15 @@ def build_web_json(tables, g1, g2) -> dict:
             "labels": SOURCE_LABEL,
             "metrics": METRICS,
             "national": national,
+            "shelter": {
+                "year": HNO_YEAR,
+                "labels": SHELTER_TIER_LABELS,
+                "breaks": SHELTER_BREAKS,
+                "note": "Pre-existing shelter need (HNO 2025) — admin units tiered by "
+                "Shelter-cluster People in Need per capita. The official JIAF severity "
+                "phase is not openly published; this is the most damage-relevant proxy.",
+            },
+            "tier_breakdown": {"adm1": breakdown(adm1), "adm2": breakdown(adm2)},
         },
         "adm1": adm1,
         "adm2": adm2,
@@ -415,6 +520,7 @@ def main() -> None:
     tables = aggregate(df)
 
     g1, g2 = load_admin_geo(settings)
+    hno = load_hno(settings)
     write_geojson(g1, "adm1", ["adm1_id", "adm1_name"], os.path.join(WEB_DATA, "adm1.geojson"))
     write_geojson(g2, "adm2", ["adm2_id", "adm2_name"], os.path.join(WEB_DATA, "adm2.geojson"))
 
@@ -424,7 +530,7 @@ def main() -> None:
     upload_parquet(long, blob, settings)
     print(f"  processed <- {blob} ({len(long):,} rows)", flush=True)
 
-    web = build_web_json(tables, g1, g2)
+    web = build_web_json(tables, g1, g2, hno)
     with open(os.path.join(WEB_DATA, "exposure.json"), "w") as f:
         json.dump(web, f, separators=(",", ":"))
     nat = web["meta"]["national"]

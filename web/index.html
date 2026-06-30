@@ -28,9 +28,23 @@
         <button data-level="adm2">Municipality (adm2)</button>
       </span>
     </label>
+    <label>Shade map
+      <span class="toggle" id="shade">
+        <button data-shade="exposure" class="on">Exposure</button>
+        <button data-shade="need">Shelter need</button>
+      </span>
+    </label>
     <span class="spacer"></span>
     <span class="legend" id="legend"></span>
   </div>
+
+  <section class="sev" id="severity" aria-label="Exposure by pre-existing shelter need">
+    <div class="sev-head">
+      <strong id="sev-title">Exposure by pre-existing shelter need</strong>
+      <span class="sev-note" id="sev-note"></span>
+    </div>
+    <div class="sev-bars" id="sev-bars"></div>
+  </section>
 
   <main>
     <div id="map"></div>
@@ -45,8 +59,10 @@
   <footer>
     <p>Population: <span id="popsrc"></span>. Damage sources harmonized by
       <a href="https://github.com/OCHA-DAP/ds-geospatial-impact-estimates">ds-geospatial-impact-estimates</a>.
-      Method: <a href="https://github.com/OCHA-DAP/ds-geospatial-impact-exposure/blob/main/docs/decisions/0001-dasymetric-building-population-exposure.md">ADR-0001</a>
-      (area-weighted dasymetric). Detected damage is a floor, not a total.</p>
+      Pre-existing need: <a href="https://data.humdata.org/dataset/venezuela-bolivarian-republic-of-humanitarian-needs">HNO 2025</a>
+      (HDX), tiered by Shelter-cluster PiN per capita — the official JIAF severity phase is not openly published.
+      Method: <a href="https://github.com/OCHA-DAP/ds-geospatial-impact-exposure/blob/main/docs/decisions/0001-dasymetric-building-population-exposure.md">ADR-0001</a>/<a href="https://github.com/OCHA-DAP/ds-geospatial-impact-exposure/blob/main/docs/decisions/0003-pre-existing-need-overlay.md">0003</a>.
+      Detected damage is a floor, not a total.</p>
   </footer>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
