@@ -28,19 +28,16 @@
         <button data-level="adm2">Municipality (adm2)</button>
       </span>
     </label>
-    <label>Shade map
-      <span class="toggle" id="shade">
-        <button data-shade="exposure" class="on">Exposure</button>
-        <button data-shade="need">Shelter need</button>
-      </span>
+    <label>Need sector
+      <select id="sector"></select>
     </label>
     <span class="spacer"></span>
     <span class="legend" id="legend"></span>
   </div>
 
-  <section class="sev" id="severity" aria-label="Exposure by pre-existing shelter need">
+  <section class="sev" id="severity" aria-label="Exposed and in need, by sector">
     <div class="sev-head">
-      <strong id="sev-title">Exposure by pre-existing shelter need</strong>
+      <strong id="sev-title"></strong>
       <span class="sev-note" id="sev-note"></span>
     </div>
     <div class="sev-bars" id="sev-bars"></div>
@@ -60,7 +57,8 @@
     <p>Population: <span id="popsrc"></span>. Damage sources harmonized by
       <a href="https://github.com/OCHA-DAP/ds-geospatial-impact-estimates">ds-geospatial-impact-estimates</a>.
       Pre-existing need: <a href="https://data.humdata.org/dataset/venezuela-bolivarian-republic-of-humanitarian-needs">HNO 2025</a>
-      (HDX), tiered by Shelter-cluster PiN per capita — the official JIAF severity phase is not openly published.
+      (HDX) People in Need per sector; exposed &amp; in need = exposure × (sector PiN / population), assuming need is evenly
+      distributed. PiN are counts; the official JIAF severity phase is not openly published.
       Method: <a href="https://github.com/OCHA-DAP/ds-geospatial-impact-exposure/blob/main/docs/decisions/0001-dasymetric-building-population-exposure.md">ADR-0001</a>/<a href="https://github.com/OCHA-DAP/ds-geospatial-impact-exposure/blob/main/docs/decisions/0003-pre-existing-need-overlay.md">0003</a>.
       Detected damage is a floor, not a total.</p>
   </footer>

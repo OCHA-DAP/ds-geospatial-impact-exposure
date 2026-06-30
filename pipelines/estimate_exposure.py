@@ -146,23 +146,26 @@ AREA_FLOOR_M2 = 30.0
 AREA_CAP_PCTL = 99  # cap = this percentile of residential footprint area
 
 # Pre-existing humanitarian need overlay (HNO 2025, see fetch_hno.py / ADR-0003).
-# The official JIAF severity *phase* isn't open and intersectoral PiN-per-capita
-# is nearly flat, so we tier admin units by *Shelter*-cluster PiN per capita —
-# the need most relevant to building damage — into 4 levels.
+# The official JIAF severity *phase* isn't open — only People-in-Need *counts* per
+# sector. So we carry PiN per admin per sector and let the page treat it like
+# exposure: prevalence = PiN_sector / population (assumed uniform), and
+# exposed-in-need = exposure x prevalence.
 HNO_YEAR = 2025
-SHELTER_BREAKS = [0.05, 0.10, 0.15]  # ratio cut-points -> tiers 0..3
-SHELTER_TIER_LABELS = ["Low", "Moderate", "High", "Very high"]
-
-
-def shelter_tier(ratio: float | None) -> int | None:
-    """Map a Shelter-PiN/population ratio to a tier index 0..3 (None if no data)."""
-    if ratio is None or (isinstance(ratio, float) and ratio != ratio):  # NaN-safe
-        return None
-    return sum(ratio >= b for b in SHELTER_BREAKS)
+SECTORS = [
+    ("ALL", "Intersectoral (all)"),
+    ("SHL", "Shelter"),
+    ("WSH", "WASH"),
+    ("HEA", "Health"),
+    ("NUT", "Nutrition"),
+    ("FSC", "Food security"),
+    ("EDU", "Education"),
+    ("PRO", "Protection"),
+]
+SECTOR_CODES = [c for c, _ in SECTORS]
 
 
 def load_hno(settings) -> dict:
-    """Mirror the HNO 2025 bronze parquet; return {state_norm|mun_norm: {...}}."""
+    """Mirror the HNO 2025 bronze parquet; return {state_norm|mun_norm: row-dict}."""
     p = mirror_blob(
         settings.blob_path("bronze", "hno", f"adm0={ADM0}", f"hno_{HNO_YEAR}_adm2.parquet"),
         settings.container,
@@ -170,7 +173,8 @@ def load_hno(settings) -> dict:
     )
     h = pd.read_parquet(p)
     h["key"] = h["state"].map(norm) + "|" + h["municipio"].map(norm)
-    return h.set_index("key")[["population", "pin_intersectoral", "pin_shelter"]].to_dict("index")
+    cols = ["population", *[f"pin_{c}" for c in SECTOR_CODES]]
+    return h.set_index("key")[cols].to_dict("index")
 
 
 def _num(v) -> float | None:
@@ -180,23 +184,16 @@ def _num(v) -> float | None:
     return float(v)
 
 
-def _pre_record(rec: dict | None) -> dict:
-    """Build a per-admin pre-existing-need block from an HNO lookup row.
-
-    Missing Shelter PiN (some municipios) -> tier None ("no data"), distinct from
-    a reported zero. Intersectoral PiN / population are still carried when present."""
+def _need_record(rec: dict | None) -> dict:
+    """Per-admin need block: {pop, pin: {sector_code: count_or_None}}."""
     pop = _num(rec.get("population")) if rec else None
     if not pop:
-        return {"pop": None, "pin": None, "shelter": None, "ratio": None, "tier": None}
-    shelter = _num(rec.get("pin_shelter"))
-    ratio = shelter / pop if shelter is not None else None
-    return {
-        "pop": round(pop),
-        "pin": round(_num(rec.get("pin_intersectoral")) or 0.0),
-        "shelter": round(shelter) if shelter is not None else None,
-        "ratio": round(ratio, 3) if ratio is not None else None,
-        "tier": shelter_tier(ratio),
-    }
+        return {"pop": None, "pin": {}}
+    pin = {}
+    for c in SECTOR_CODES:
+        v = _num(rec.get(f"pin_{c}"))
+        pin[c] = round(v) if v is not None else None
+    return {"pop": round(pop), "pin": pin}
 
 
 # --------------------------------------------------------------------------- #
@@ -429,46 +426,39 @@ def build_web_json(tables, g1, g2, hno) -> dict:
     adm1 = pack("adm1", name1)
     adm2 = pack("adm2", name2, parent)
 
-    # --- pre-existing humanitarian need (HNO 2025): attach per adm2 by state|mun
-    #     name, aggregate to adm1, and tier by Shelter-PiN per capita (ADR-0003).
+    # --- pre-existing humanitarian need (HNO 2025): attach PiN per sector per adm2
+    #     by state|municipio name, then aggregate to adm1 (ADR-0003). The page
+    #     derives prevalence = PiN_sector / pop and exposed-in-need = exposure x prevalence.
     for r in adm2:
         st = name1.get(r.get("adm1_id"), "")
-        r["pre"] = _pre_record(hno.get(f"{norm(st)}|{norm(r['name'])}"))
+        r["need"] = _need_record(hno.get(f"{norm(st)}|{norm(r['name'])}"))
     agg: dict = {}
     for r in adm2:
-        pre = r["pre"]
-        if pre["pop"] is None:
+        nd = r["need"]
+        if nd["pop"] is None:
             continue
-        a = agg.setdefault(r["adm1_id"], {"pop": 0.0, "pin": 0.0, "sh": 0.0, "sh_pop": 0.0})
-        a["pop"] += pre["pop"]
-        a["pin"] += pre["pin"]
-        if pre["shelter"] is not None:  # ratio only over children with shelter data
-            a["sh"] += pre["shelter"]
-            a["sh_pop"] += pre["pop"]
+        a = agg.setdefault(
+            r["adm1_id"],
+            {
+                "pop": 0.0,
+                "pin": dict.fromkeys(SECTOR_CODES, 0.0),
+                "has": dict.fromkeys(SECTOR_CODES, False),
+            },
+        )
+        a["pop"] += nd["pop"]
+        for c in SECTOR_CODES:
+            if nd["pin"].get(c) is not None:
+                a["pin"][c] += nd["pin"][c]
+                a["has"][c] = True
     for r in adm1:
         a = agg.get(r["pcode"])
         if a and a["pop"] > 0:
-            ratio = a["sh"] / a["sh_pop"] if a["sh_pop"] > 0 else None
-            r["pre"] = {
+            r["need"] = {
                 "pop": round(a["pop"]),
-                "pin": round(a["pin"]),
-                "shelter": round(a["sh"]) if a["sh_pop"] > 0 else None,
-                "ratio": round(ratio, 3) if ratio is not None else None,
-                "tier": shelter_tier(ratio),
+                "pin": {c: (round(a["pin"][c]) if a["has"][c] else None) for c in SECTOR_CODES},
             }
         else:
-            r["pre"] = {"pop": None, "pin": None, "shelter": None, "ratio": None, "tier": None}
-
-    def breakdown(records):
-        out: dict = {}
-        for r in records:
-            t = r["pre"]["tier"]
-            k = t if t is not None else -1
-            b = out.setdefault(k, {"tier": k, "n_adm": 0, "any": 0, "agree2": 0})
-            b["n_adm"] += 1
-            b["any"] += r["sources"]["any"]["pop"]
-            b["agree2"] += r["sources"]["agree2"]["pop"]
-        return [out[k] for k in sorted(out)]
+            r["need"] = {"pop": None, "pin": {}}
 
     national = {
         m: {
@@ -491,15 +481,11 @@ def build_web_json(tables, g1, g2, hno) -> dict:
             "labels": SOURCE_LABEL,
             "metrics": METRICS,
             "national": national,
-            "shelter": {
-                "year": HNO_YEAR,
-                "labels": SHELTER_TIER_LABELS,
-                "breaks": SHELTER_BREAKS,
-                "note": "Pre-existing shelter need (HNO 2025) — admin units tiered by "
-                "Shelter-cluster People in Need per capita. The official JIAF severity "
-                "phase is not openly published; this is the most damage-relevant proxy.",
-            },
-            "tier_breakdown": {"adm1": breakdown(adm1), "adm2": breakdown(adm2)},
+            "sectors": [{"code": c, "label": lbl} for c, lbl in SECTORS],
+            "need_note": "Exposed & in need = residents of damaged buildings x "
+            f"(sector People in Need / population), HNO {HNO_YEAR}. Assumes need is "
+            "evenly distributed across the admin unit's population. PiN are counts; "
+            "the official JIAF severity phase is not openly published.",
         },
         "adm1": adm1,
         "adm2": adm2,

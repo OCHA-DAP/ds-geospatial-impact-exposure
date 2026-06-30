@@ -77,6 +77,8 @@ th.metric-on { color: var(--accent); }
 .sev-track { background: #f0f0f0; border-radius: 3px; height: 14px; overflow: hidden; }
 .sev-fill { height: 100%; border-radius: 3px; }
 .sev-row .num { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+.sev-click { cursor: pointer; }
+.sev-click:hover .lab { color: var(--accent); }
 
 /* shelter-need tier chip in the table */
 .chip { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; color: #fff; }

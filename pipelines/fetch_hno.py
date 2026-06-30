@@ -38,6 +38,9 @@ HNO_CSV = (
     "https://data.humdata.org/dataset/0ea5e9cd-4c46-499d-9c31-f53e9315d6db/"
     "resource/a41113dc-a70e-41ad-ad8e-d92210edbb2f/download/ven_hpc_needs_api_2025.csv"
 )
+# HNO cluster codes -> the People-in-Need columns we keep (one per sector). ALL is
+# the intersectoral total. Downstream derives prevalence = PiN / population.
+SECTOR_CODES = ["ALL", "SHL", "WSH", "HEA", "NUT", "FSC", "EDU", "PRO"]
 
 
 def norm(s: str) -> str:
@@ -66,15 +69,14 @@ def main() -> None:
             "municipio": inter["municipio"],
             "ve_pcode": inter["Admin 2 PCode"],  # legacy pcode, for provenance
             "population": inter["Population"],
-            "pin_intersectoral": inter["In Need"],
-            "pin_shelter": cluster_pin("SHL"),
-            "pin_wash": cluster_pin("WSH"),
-            "pin_health": cluster_pin("HEA"),
         }
-    ).reset_index()
+    )
+    for code in SECTOR_CODES:  # one PiN column per sector (NaN where a cluster is absent)
+        out[f"pin_{code}"] = cluster_pin(code)
+    out = out.reset_index()
     print(
-        f"  {len(out):,} municipios; intersectoral PiN {int(out['pin_intersectoral'].sum()):,}, "
-        f"shelter PiN {int(out['pin_shelter'].sum()):,}",
+        f"  {len(out):,} municipios; "
+        + ", ".join(f"{c}={int(out[f'pin_{c}'].fillna(0).sum()):,}" for c in SECTOR_CODES),
         flush=True,
     )
 
