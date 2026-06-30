@@ -8,9 +8,12 @@ const fmt = new Intl.NumberFormat("en-US");
 // metric = damage-aggregation method; sector = HNO need sector ("none" = no need overlay)
 // mapShow = whether the choropleth shades total exposed or sector exposed-in-need
 const state = {
-  metric: "any", sector: "ALL", level: "adm1", mapShow: "total",
+  metric: "any", sector: "ALL", level: "adm1", mapShow: "total", showSources: false,
   data: null, geo: {}, recs: {}, sel: null,
 };
+const BAR_LIGHT = "#fdc6a8", BAR_DARK = "#cb181d";
+// Venezuela extent — clamp the map so you can't zoom/pan far past the country
+const VE_BOUNDS = [[-75, -0.5], [-58.5, 13.5]];
 
 function colorExpr(prop) {
   const stops = [];
@@ -69,7 +72,7 @@ let map;
 function initMap() {
   map = new maplibregl.Map({
     container: "map", style: BASEMAP, center: [-66.5, 9.6], zoom: 5.6,
-    attributionControl: { compact: true },
+    minZoom: 5, maxBounds: VE_BOUNDS, attributionControl: { compact: true },
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
   map.on("load", () => {
@@ -140,7 +143,7 @@ function sectorLabel(code) {
 function setMetric(m) {
   state.metric = m; sortKey = null;
   document.getElementById("metric").value = m;
-  redecorate(); renderCards(); renderTable(); renderBars();
+  redecorate(); renderTable(); renderBars();
 }
 function setSector(s) {
   state.sector = s;
@@ -148,9 +151,13 @@ function setSector(s) {
   // if the map is showing the (now removed) sector but sector is none, fall back
   if (s === "none" && state.mapShow === "sector") setMapShow("total");
   else redecorate();
-  renderCards(); renderTable(); renderBars(); renderLegend();
+  renderTable(); renderBars(); renderLegend();
   document.querySelector('#mapshow button[data-show="sector"]').textContent =
     s === "none" ? "In need" : `In ${sectorLabel(s)} need`;
+}
+function setShowSources(on) {
+  state.showSources = on; sortKey = null;
+  renderTable();
 }
 function setMapShow(mode) {
   state.mapShow = mode;
@@ -175,7 +182,7 @@ function select(pcode) {
   const lvl = state.level;
   const idKey = lvl === "adm1" ? "adm1_id" : "adm2_id";
   map.setFilter(lvl + "-sel", ["==", idKey, pcode || "__none__"]);
-  document.querySelectorAll("#table tbody tr, #bars .bc-row").forEach((el) =>
+  document.querySelectorAll("#table tbody tr, #bars .vbar").forEach((el) =>
     el.classList.toggle("sel", el.dataset.pcode === pcode));
   const f = state.geo[lvl].features.find((x) => x.properties[idKey] === pcode);
   if (f) {
@@ -185,57 +192,68 @@ function select(pcode) {
   }
 }
 
-function renderCards() {
-  const nat = state.data.meta.national, labels = state.data.meta.labels;
-  const order = ["agree2", "any", "microsoft", "copernicus_ems", "impact_initiatives", "osu"];
-  document.getElementById("cards").innerHTML = order.map((m) =>
-    `<div class="card ${m === state.metric ? "hi" : ""}" data-m="${m}">
-       <div class="lbl">${labels[m]}</div>
-       <div class="val">${fmt.format(nat[m].pop)}</div>
-       <div class="sub2">${fmt.format(nat[m].n)} buildings</div>
-     </div>`).join("");
-  document.querySelectorAll(".card").forEach((c) => (c.onclick = () => setMetric(c.dataset.m)));
-}
-
 let sortKey = null, sortDir = -1;
 function renderTable() {
   const recs = state.data[state.level];
   const labels = state.data.meta.labels;
   const showNeed = state.sector !== "none";
-  // table compares total exposed across methods (minus ≥2), always total
-  const cols = state.data.meta.metrics.filter((m) => m !== "agree2");
-  const key = sortKey || (cols.includes(state.metric) ? state.metric : "any");
-  const val = (r) =>
-    key === "pin" ? (r.need && r.need.pin ? (r.need.pin[state.sector] ?? -1) : -1)
-      : key === "prev" ? (pinShare(r, state.sector) ?? -1)
-        : totalExp(r, key);
-  const sorted = [...recs].sort((a, b) =>
-    key === "name" ? sortDir * a.name.localeCompare(b.name) : sortDir * (val(b) - val(a)));
+  const sLbl = sectorLabel(state.sector);
+  const dash = "·";
 
-  const colHead = (m) => (m === "any" ? "People exposed" : shortLabel(m));
+  // build column descriptors
+  const cols = [];
+  if (state.showSources) {
+    state.data.meta.metrics.filter((m) => m !== "agree2").forEach((m) => cols.push({
+      k: m, on: m === state.metric, title: `${labels[m]} — total people exposed`,
+      head: shortLabel(m), val: (r) => totalExp(r, m),
+      fmt: (r) => (totalExp(r, m) ? fmt.format(totalExp(r, m)) : dash),
+    }));
+  } else {
+    cols.push({
+      k: "exp", title: `${labels[state.metric]} — total people exposed`,
+      head: `<span class="sw" style="background:${BAR_LIGHT}"></span>People exposed`,
+      val: (r) => totalExp(r, state.metric),
+      fmt: (r) => (totalExp(r, state.metric) ? fmt.format(totalExp(r, state.metric)) : dash),
+    });
+  }
+  if (showNeed) {
+    cols.push({
+      k: "pinexp", cls: "pin-exp", title: `${sLbl}: exposed & in need (${labels[state.metric]})`,
+      head: `<span class="sw" style="background:${BAR_DARK}"></span>${sLbl} PiN exposed`,
+      val: (r) => expInNeed(r, state.metric) ?? -1,
+      fmt: (r) => { const v = expInNeed(r, state.metric); return v ? fmt.format(v) : dash; },
+    });
+    cols.push({
+      k: "pin", title: `${sLbl} total People in Need (HNO 2025)`, head: "Total PiN",
+      val: (r) => (r.need && r.need.pin ? (r.need.pin[state.sector] ?? -1) : -1),
+      fmt: (r) => (r.need && r.need.pin && r.need.pin[state.sector] != null ? fmt.format(r.need.pin[state.sector]) : dash),
+    });
+    cols.push({
+      k: "prev", title: "sector PiN as a share of the admin's total population", head: "PiN as % of total pop.",
+      val: (r) => pinShare(r, state.sector) ?? -1,
+      fmt: (r) => { const s = pinShare(r, state.sector); return s == null ? dash : (s * 100).toFixed(0) + "%"; },
+    });
+  }
+
+  const defKey = state.showSources ? state.metric : "exp";
+  const key = sortKey || defKey;
+  const col = cols.find((c) => c.k === key);
+  const valFn = col ? col.val : (r) => totalExp(r, state.metric);
+  const sorted = [...recs].sort((a, b) =>
+    key === "name" ? sortDir * a.name.localeCompare(b.name) : sortDir * (valFn(b) - valFn(a)));
+
   const thead = document.querySelector("#table thead");
   thead.innerHTML = "<tr>" +
     `<th data-k="name" class="${key === "name" ? "sorted" : ""}">${state.level === "adm1" ? "State" : "Municipality"}</th>` +
-    cols.map((m) =>
-      `<th data-k="${m}" class="${m === state.metric ? "metric-on" : ""} ${key === m ? "sorted" : ""}" title="${labels[m]} — total people exposed">${colHead(m)}</th>`).join("") +
-    (showNeed
-      ? `<th data-k="pin" class="${key === "pin" ? "sorted" : ""}" title="${sectorLabel(state.sector)} total People in Need (HNO 2025)">Total PiN</th>` +
-        `<th data-k="prev" class="${key === "prev" ? "sorted" : ""}" title="sector PiN as a share of the admin's total population">PiN as % of total pop.</th>`
-      : "") +
+    cols.map((c) =>
+      `<th data-k="${c.k}" class="${c.on ? "metric-on" : ""} ${key === c.k ? "sorted" : ""}" title="${c.title}">${c.head}</th>`).join("") +
     "</tr>";
-
   const tbody = document.querySelector("#table tbody");
-  tbody.innerHTML = sorted.map((r) => {
-    const share = pinShare(r, state.sector);
-    return `<tr data-pcode="${r.pcode}" class="${r.pcode === state.sel ? "sel" : ""}">` +
-      `<td title="${r.name}">${r.name}</td>` +
-      cols.map((m) => `<td class="${m === state.metric ? "metric-on" : ""}">${totalExp(r, m) ? fmt.format(totalExp(r, m)) : "·"}</td>`).join("") +
-      (showNeed
-        ? `<td>${r.need && r.need.pin && r.need.pin[state.sector] != null ? fmt.format(r.need.pin[state.sector]) : "·"}</td>` +
-          `<td>${share == null ? "·" : (share * 100).toFixed(0) + "%"}</td>`
-        : "") +
-      "</tr>";
-  }).join("");
+  tbody.innerHTML = sorted.map((r) =>
+    `<tr data-pcode="${r.pcode}" class="${r.pcode === state.sel ? "sel" : ""}">` +
+    `<td title="${r.name}">${r.name}</td>` +
+    cols.map((c) => `<td class="${c.cls || ""} ${c.on ? "metric-on" : ""}">${c.fmt(r)}</td>`).join("") +
+    "</tr>").join("");
 
   thead.querySelectorAll("th").forEach((th) => (th.onclick = () => {
     const k = th.dataset.k;
@@ -252,26 +270,28 @@ const SHORT = {
 };
 function shortLabel(m) { return SHORT[m] || m; }
 
+const BAR_PLOT = 120; // px — tallest column
 function renderBars() {
   const recs = state.data[state.level], m = state.metric;
   const hasSector = state.sector !== "none";
   const rows = recs.map((r) => ({ r, total: totalExp(r, m), sec: hasSector ? (expInNeed(r, m) || 0) : 0 }))
     .sort((a, b) => b.total - a.total);
   const max = Math.max(1, ...rows.map((x) => x.total));
-  document.getElementById("bc-title").textContent =
-    `${state.data.meta.labels[m]} — people exposed per ${state.level === "adm1" ? "state" : "municipality"}` +
-    (hasSector ? ` (dark = also in ${sectorLabel(state.sector)} need)` : "");
+  const nat = state.data.meta.national[m].pop;
+  document.getElementById("bc-title").innerHTML =
+    `<span class="sw" style="background:${BAR_LIGHT}"></span>${state.data.meta.labels[m]}: ${fmt.format(nat)} exposed` +
+    (hasSector ? ` · <span class="sw" style="background:${BAR_DARK}"></span>in ${sectorLabel(state.sector)} need` : "") +
+    ` · per ${state.level === "adm1" ? "state" : "municipality"}`;
   document.getElementById("bars").innerHTML = rows.map((x) => {
-    const tw = ((x.total / max) * 100).toFixed(2);
-    const sw = x.total > 0 ? ((x.sec / x.total) * 100).toFixed(2) : 0;
-    const secNum = hasSector ? ` · <b>${fmt.format(Math.round(x.sec))}</b>` : "";
-    return `<div class="bc-row ${x.r.pcode === state.sel ? "sel" : ""}" data-pcode="${x.r.pcode}">` +
-      `<span class="bc-name" title="${x.r.name}">${x.r.name}</span>` +
-      `<span class="bc-track"><span class="bc-total" style="width:${tw}%"><span class="bc-sec" style="width:${sw}%"></span></span></span>` +
-      `<span class="bc-num">${fmt.format(x.total)}${secNum}</span>` +
-      `</div>`;
+    const h = Math.max(1, (x.total / max) * BAR_PLOT);
+    const sh = x.total > 0 ? ((x.sec / x.total) * 100).toFixed(2) : 0;
+    const t = `${x.r.name}: ${fmt.format(x.total)} exposed` +
+      (hasSector ? ` · ${fmt.format(Math.round(x.sec))} also in need` : "");
+    return `<div class="vbar ${x.r.pcode === state.sel ? "sel" : ""}" data-pcode="${x.r.pcode}" title="${t}">` +
+      `<div class="vbar-col" style="height:${h.toFixed(1)}px"><div class="vbar-sec" style="height:${sh}%"></div></div>` +
+      `<div class="vbar-name">${x.r.name}</div></div>`;
   }).join("");
-  document.querySelectorAll("#bars .bc-row").forEach((el) => (el.onclick = () => select(el.dataset.pcode)));
+  document.querySelectorAll("#bars .vbar").forEach((el) => (el.onclick = () => select(el.dataset.pcode)));
 }
 
 function renderLegend() {
@@ -315,8 +335,11 @@ async function boot() {
   document.querySelectorAll("#level button").forEach((b) => (b.onclick = () => setLevel(b.dataset.level)));
   document.querySelectorAll("#mapshow button").forEach((b) => (b.onclick = () => setMapShow(b.dataset.show)));
   document.querySelector('#mapshow button[data-show="sector"]').textContent = `In ${sectorLabel(state.sector)} need`;
+  const chk = document.getElementById("showsrc");
+  chk.checked = state.showSources;
+  chk.onchange = () => setShowSources(chk.checked);
 
-  renderCards(); renderTable(); renderLegend(); renderBars();
+  renderTable(); renderLegend(); renderBars();
   initMap();
 }
 

@@ -16,8 +16,6 @@
     <p class="sub"><a href="./validate.html">Validate → building footprints &amp; the population grid ↗</a></p>
   </header>
 
-  <section class="cards" id="cards" aria-label="National totals"></section>
-
   <div class="controls">
     <label>Damage agg. method
       <select id="metric"></select>
@@ -31,30 +29,32 @@
     <label>Need sector
       <select id="sector"></select>
     </label>
-    <label>Map shows
-      <span class="toggle" id="mapshow">
-        <button data-show="total" class="on">Total exposed</button>
-        <button data-show="sector">In need</button>
-      </span>
-    </label>
+    <label class="chk"><input type="checkbox" id="showsrc" /> per-source columns</label>
     <span class="spacer"></span>
     <span class="legend" id="legend"></span>
   </div>
 
   <main>
-    <div id="map"></div>
-    <div id="tablewrap">
-      <table id="table">
-        <thead></thead>
-        <tbody></tbody>
-      </table>
+    <div class="mapwrap">
+      <div id="map"></div>
+      <div class="map-ctrl" id="mapshow" aria-label="Map shows">
+        <button data-show="total" class="on">Total exposed</button>
+        <button data-show="sector">In need</button>
+      </div>
+    </div>
+    <div id="right">
+      <section class="bc" id="barchart" aria-label="People exposed per admin">
+        <div class="bc-head"><strong id="bc-title"></strong></div>
+        <div id="bars"></div>
+      </section>
+      <div id="tablewrap">
+        <table id="table">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
   </main>
-
-  <section class="bc" id="barchart" aria-label="People exposed per admin">
-    <div class="bc-head"><strong id="bc-title"></strong></div>
-    <div id="bars"></div>
-  </section>
 
   <footer>
     <p>Population: <span id="popsrc"></span>. Damage sources harmonized by
