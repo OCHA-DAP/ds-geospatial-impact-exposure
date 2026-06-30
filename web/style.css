@@ -32,7 +32,6 @@ select { font-size: 13px; padding: 4px 8px; border: 1px solid var(--line); borde
 .legend { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
 .legend i { width: 16px; height: 12px; display: inline-block; border: 1px solid rgba(0,0,0,.1); }
 
-.chk { cursor: pointer; }
 main { display: grid; grid-template-columns: 1.05fr 1fr; grid-template-areas: "map chart" "table table";
   gap: 14px; padding: 4px 24px 24px; }
 .mapwrap { grid-area: map; position: relative; }
@@ -46,8 +45,7 @@ main { display: grid; grid-template-columns: 1.05fr 1fr; grid-template-areas: "m
 .map-ctrl button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
 #barchart { grid-area: chart; height: 440px; }
 .table-area { grid-area: table; }
-.table-toolbar { display: flex; justify-content: flex-end; padding: 2px 2px 6px; }
-#tablewrap { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+#tablewrap { max-height: 440px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
 @media (max-width: 900px) { main { grid-template-columns: 1fr; grid-template-areas: "map" "chart" "table"; }
   #barchart { height: 320px; } }
 

@@ -8,7 +8,7 @@ const fmt = new Intl.NumberFormat("en-US");
 // metric = damage-aggregation method; sector = HNO need sector ("none" = no need overlay)
 // mapShow = whether the choropleth shades total exposed or sector exposed-in-need
 const state = {
-  metric: "any", sector: "ALL", level: "adm1", mapShow: "total", showSources: false,
+  metric: "any", sector: "ALL", level: "adm1", mapShow: "total",
   data: null, geo: {}, recs: {}, sel: null,
 };
 const BAR_LIGHT = "#fdc6a8", BAR_DARK = "#cb181d";
@@ -159,10 +159,6 @@ function setSector(s) {
   document.querySelector('#mapshow button[data-show="sector"]').textContent =
     s === "none" ? "In need" : `In ${sectorLabel(s)} need`;
 }
-function setShowSources(on) {
-  state.showSources = on; sortKey = null;
-  renderTable();
-}
 function setMapShow(mode) {
   state.mapShow = mode;
   document.querySelectorAll("#mapshow button").forEach((b) =>
@@ -213,22 +209,15 @@ function renderTable() {
   const sLbl = sectorLabel(state.sector);
   const dash = "·";
 
-  // build column descriptors
+  // build column descriptors — one total-exposed column per method (minus ≥2),
+  // the selected method flagged with the bar-chart's light swatch.
   const cols = [];
-  if (state.showSources) {
-    state.data.meta.metrics.filter((m) => m !== "agree2").forEach((m) => cols.push({
-      k: m, on: m === state.metric, title: `${labels[m]} — total people exposed`,
-      head: shortLabel(m), val: (r) => totalExp(r, m),
-      fmt: (r) => (totalExp(r, m) ? fmt.format(totalExp(r, m)) : dash),
-    }));
-  } else {
-    cols.push({
-      k: "exp", title: `${labels[state.metric]} — total people exposed`,
-      head: `<span class="sw" style="background:${BAR_LIGHT}"></span>People exposed`,
-      val: (r) => totalExp(r, state.metric),
-      fmt: (r) => (totalExp(r, state.metric) ? fmt.format(totalExp(r, state.metric)) : dash),
-    });
-  }
+  state.data.meta.metrics.filter((m) => m !== "agree2").forEach((m) => cols.push({
+    k: m, on: m === state.metric, title: `${labels[m]} — total people exposed`,
+    head: `${m === state.metric ? `<span class="sw" style="background:${BAR_LIGHT}"></span>` : ""}${shortLabel(m)}`,
+    val: (r) => totalExp(r, m),
+    fmt: (r) => (totalExp(r, m) ? fmt.format(totalExp(r, m)) : dash),
+  }));
   if (showNeed) {
     cols.push({
       k: "pinexp", cls: "pin-exp", title: `${sLbl}: exposed & in need (${labels[state.metric]})`,
@@ -248,7 +237,7 @@ function renderTable() {
     });
   }
 
-  const defKey = state.showSources ? state.metric : "exp";
+  const defKey = cols.some((c) => c.k === state.metric) ? state.metric : "any";
   const key = sortKey || defKey;
   const col = cols.find((c) => c.k === key);
   const valFn = col ? col.val : (r) => totalExp(r, state.metric);
@@ -356,9 +345,6 @@ async function boot() {
   document.querySelectorAll("#level button").forEach((b) => (b.onclick = () => setLevel(b.dataset.level)));
   document.querySelectorAll("#mapshow button").forEach((b) => (b.onclick = () => setMapShow(b.dataset.show)));
   document.querySelector('#mapshow button[data-show="sector"]').textContent = `In ${sectorLabel(state.sector)} need`;
-  const chk = document.getElementById("showsrc");
-  chk.checked = state.showSources;
-  chk.onchange = () => setShowSources(chk.checked);
 
   renderTable(); renderLegend(); renderBars();
   initMap();
