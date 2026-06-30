@@ -66,23 +66,5 @@ th.metric-on { color: var(--accent); }
 .popup td { padding: 1px 4px; }
 .popup .k { color: var(--muted); text-align: left; }
 
-/* pre-existing shelter-need breakdown */
-.sev { padding: 2px 24px 10px; }
-.sev-head { display: flex; align-items: baseline; gap: 10px; font-size: 13px; margin-bottom: 6px; flex-wrap: wrap; }
-.sev-note { color: var(--muted); font-size: 11.5px; }
-.sev-bars { display: flex; flex-direction: column; gap: 3px; max-width: 720px; }
-.sev-row { display: grid; grid-template-columns: 92px 1fr 96px; align-items: center; gap: 8px; font-size: 12px; }
-.sev-row .lab { display: flex; align-items: center; gap: 6px; color: var(--ink); }
-.sev-row .lab i { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
-.sev-track { background: #f0f0f0; border-radius: 3px; height: 14px; overflow: hidden; }
-.sev-fill { height: 100%; border-radius: 3px; }
-.sev-row .num { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
-.sev-click { cursor: pointer; }
-.sev-click:hover .lab { color: var(--accent); }
-
-/* shelter-need tier chip in the table */
-.chip { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; color: #fff; }
-.chip.t-1 { background: #c9c9c9; color: #555; }
-
 footer { padding: 4px 24px 28px; font-size: 11.5px; color: var(--muted); }
 footer a { color: var(--muted); }

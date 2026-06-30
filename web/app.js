@@ -35,6 +35,13 @@ function dispVal(r) { return expInNeed(r, state.metric); }
 function natVal(source) {
   return state.data.adm1.reduce((s, r) => s + (expInNeed(r, source) || 0), 0);
 }
+// true PiN / population ratio (uncapped — can exceed 100% in displacement areas)
+function pinShare(r, sector) {
+  if (sector === "none") return null;
+  const nd = r.need;
+  if (!nd || nd.pop == null || nd.pin[sector] == null) return null;
+  return nd.pin[sector] / nd.pop;
+}
 
 function bbox(fc) {
   let [x0, y0, x1, y1] = [180, 90, -180, -90];
@@ -118,11 +125,11 @@ function onHover(e, lvl) {
   let needLine = "";
   if (state.sector !== "none") {
     const pin = r.need && r.need.pin ? r.need.pin[state.sector] : null;
-    const prev = prevalence(r, state.sector);
+    const share = pinShare(r, state.sector);
     const lbl = sectorLabel(state.sector);
     needLine = `<div style="margin-top:5px;border-top:1px solid #eee;padding-top:4px;font-size:11px;color:#6b6b6b">` +
       (pin == null ? `${lbl}: no HNO data` :
-        `${lbl} need: ${fmt.format(pin)} in need (${(prev * 100).toFixed(0)}% of ${fmt.format(r.need.pop)})`) +
+        `${lbl} need: ${fmt.format(pin)} PiN (${(share * 100).toFixed(0)}% of ${fmt.format(r.need.pop)})`) +
       `</div>`;
   }
   const head = state.sector === "none"
@@ -143,12 +150,12 @@ function sectorLabel(code) {
 function setMetric(m) {
   state.metric = m; sortKey = null;
   document.getElementById("metric").value = m;
-  redecorate(); renderCards(); renderTable(); renderPanel();
+  redecorate(); renderCards(); renderTable();
 }
 function setSector(s) {
   state.sector = s;
   document.getElementById("sector").value = s;
-  redecorate(); renderCards(); renderTable(); renderPanel(); renderLegend();
+  redecorate(); renderCards(); renderTable(); renderLegend();
 }
 function setLevel(lvl) {
   state.level = lvl; state.sel = null;
@@ -159,7 +166,7 @@ function setLevel(lvl) {
     [l + "-fill", l + "-line", l + "-sel"].forEach((id) =>
       map.getLayer(id) && map.setLayoutProperty(id, "visibility", vis));
   });
-  renderTable(); renderPanel();
+  renderTable();
 }
 
 function select(pcode) {
@@ -200,32 +207,37 @@ function renderTable() {
   const key = sortKey || state.metric;
   const val = (r) =>
     key === "pin" ? (r.need && r.need.pin ? (r.need.pin[state.sector] ?? -1) : -1)
-      : key === "prev" ? (prevalence(r, state.sector) ?? -1)
+      : key === "prev" ? (pinShare(r, state.sector) ?? -1)
         : (expInNeed(r, key) ?? -1);
   const sorted = [...recs].sort((a, b) =>
     key === "name" ? sortDir * a.name.localeCompare(b.name) : sortDir * (val(b) - val(a)));
+
+  // the union ("any") column gets a descriptive header; the rest stay short
+  const colHead = (m) => m === "any"
+    ? (state.sector === "none" ? "People exposed" : `${sectorLabel(state.sector)} PiN exposed`)
+    : shortLabel(m);
 
   const thead = document.querySelector("#table thead");
   thead.innerHTML = "<tr>" +
     `<th data-k="name" class="${key === "name" ? "sorted" : ""}">${state.level === "adm1" ? "State" : "Municipality"}</th>` +
     metrics.map((m) =>
-      `<th data-k="${m}" class="${m === state.metric ? "metric-on" : ""} ${key === m ? "sorted" : ""}" title="${labels[m]}">${shortLabel(m)}</th>`).join("") +
+      `<th data-k="${m}" class="${m === state.metric ? "metric-on" : ""} ${key === m ? "sorted" : ""}" title="${labels[m]}">${colHead(m)}</th>`).join("") +
     (showNeed
-      ? `<th data-k="pin" class="${key === "pin" ? "sorted" : ""}" title="${sectorLabel(state.sector)} People in Need (HNO 2025)">PiN</th>` +
-        `<th data-k="prev" class="${key === "prev" ? "sorted" : ""}" title="share of the admin population in need">% need</th>`
+      ? `<th data-k="pin" class="${key === "pin" ? "sorted" : ""}" title="${sectorLabel(state.sector)} total People in Need (HNO 2025)">Total PiN</th>` +
+        `<th data-k="prev" class="${key === "prev" ? "sorted" : ""}" title="sector PiN as a share of the admin's total population">PiN as % of total pop.</th>`
       : "") +
     "</tr>";
 
   const cell = (r, m) => { const v = expInNeed(r, m); return v ? fmt.format(v) : "·"; };
   const tbody = document.querySelector("#table tbody");
   tbody.innerHTML = sorted.map((r) => {
-    const prev = prevalence(r, state.sector);
+    const share = pinShare(r, state.sector);
     return `<tr data-pcode="${r.pcode}" class="${r.pcode === state.sel ? "sel" : ""}">` +
       `<td title="${r.name}">${r.name}</td>` +
       metrics.map((m) => `<td class="${m === state.metric ? "metric-on" : ""}">${cell(r, m)}</td>`).join("") +
       (showNeed
         ? `<td>${r.need && r.need.pin && r.need.pin[state.sector] != null ? fmt.format(r.need.pin[state.sector]) : "·"}</td>` +
-          `<td>${prev == null ? "·" : (prev * 100).toFixed(0) + "%"}</td>`
+          `<td>${share == null ? "·" : (share * 100).toFixed(0) + "%"}</td>`
         : "") +
       "</tr>";
   }).join("");
@@ -244,33 +256,6 @@ const SHORT = {
   any: "Any", agree2: "≥2",
 };
 function shortLabel(m) { return SHORT[m] || m; }
-
-// national exposed-&-in-need for the current source, across every sector
-function renderPanel() {
-  const src = state.metric, srcLabel = state.data.meta.labels[src];
-  const sectors = state.data.meta.sectors;
-  const vals = sectors.map((s) => ({
-    code: s.code, label: s.label,
-    v: Math.round(state.data.adm1.reduce((acc, r) => {
-      const p = prevalence(r, s.code);
-      return p == null ? acc : acc + r.sources[src].pop * p;
-    }, 0)),
-  }));
-  const max = Math.max(1, ...vals.map((x) => x.v));
-  document.getElementById("sev-title").textContent = `${srcLabel}: also pre-existing in need, by sector`;
-  document.getElementById("sev-note").textContent = state.data.meta.need_note;
-  document.getElementById("sev-bars").innerHTML = vals.map((x) => {
-    const on = x.code === state.sector;
-    const w = ((x.v / max) * 100).toFixed(1);
-    const c = on ? "#bd0026" : "#9e9ac8";
-    return `<div class="sev-row sev-click" data-sec="${x.code}" style="${on ? "font-weight:650" : ""}">` +
-      `<span class="lab"><i style="background:${c}"></i>${x.label}</span>` +
-      `<span class="sev-track"><span class="sev-fill" style="width:${w}%;background:${c}"></span></span>` +
-      `<span class="num">${fmt.format(x.v)}</span></div>`;
-  }).join("");
-  document.querySelectorAll(".sev-click").forEach((el) =>
-    (el.onclick = () => setSector(el.dataset.sec)));
-}
 
 function renderLegend() {
   const swatch = (c, lbl) => `<i style="background:${c}"></i>${lbl ? `<span>${lbl}</span>` : ""}`;
@@ -311,7 +296,7 @@ async function boot() {
 
   document.querySelectorAll("#level button").forEach((b) => (b.onclick = () => setLevel(b.dataset.level)));
 
-  renderCards(); renderTable(); renderLegend(); renderPanel();
+  renderCards(); renderTable(); renderLegend();
   initMap();
 }
 
